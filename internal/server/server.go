@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -54,25 +55,30 @@ func (s *Server) Start() {
 }
 
 func (s *Server) registerRoutes() {
+	// Explicitly register MIME types so assets are served correctly on systems
+	// without a complete MIME database (e.g. Alpine Linux containers).
+	mime.AddExtensionType(".css", "text/css; charset=utf-8")
+	mime.AddExtensionType(".js", "application/javascript")
+	mime.AddExtensionType(".svg", "image/svg+xml")
+	mime.AddExtensionType(".ico", "image/x-icon")
+	mime.AddExtensionType(".png", "image/png")
+	mime.AddExtensionType(".woff2", "font/woff2")
+
 	staticFS, err := fs.Sub(ui.StaticFiles, "dist")
 	if err != nil {
 		// Should never happen given the embed directive.
 		log.Printf("Warning: could not sub static FS: %v", err)
 	}
 
-	// GET / — serve the SPA shell
+	// GET /assets/ — serve hashed JS/CSS bundles produced by Vite.
+	// A dedicated route avoids the catch-all handler misrouting these requests.
+	if staticFS != nil {
+		s.mux.Handle("GET /assets/", http.FileServer(http.FS(staticFS)))
+	}
+
+	// GET / — serve the SPA shell (and any other static files at the root)
 	s.mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			// Try to serve from static assets first (for CSS, JS, etc)
-			if staticFS != nil {
-				assetPath := r.URL.Path[1:] // Remove leading slash
-				if f, err := staticFS.Open(assetPath); err == nil {
-					defer f.Close()
-					http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
-					return
-				}
-			}
-			// 404 for not found
 			http.NotFound(w, r)
 			return
 		}
