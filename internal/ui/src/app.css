@@ -1,0 +1,37 @@
+/* Dark theme */
+:root {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --border-color: #404040;
+  --accent: #00d4ff;
+  --accent-hover: #00a8cc;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  gap: 1px;
+  background: var(--border-color);
+}
+
+.grid-panel {
+  flex: 0 0 35%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.detail-panel {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}

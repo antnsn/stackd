@@ -1,0 +1,149 @@
+.app-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20px;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.detail-header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.detail-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+.info-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.status-badge.status-running {
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--accent);
+}
+
+.status-badge.status-stopped {
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff6464;
+}
+
+.logs-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.logs-container h3 {
+  margin: 0;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.logs-content {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  padding: 12px;
+  line-height: 1.4;
+}
+
+.log-line {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.log-time {
+  color: var(--text-secondary);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.log-level {
+  min-width: 60px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.log-message {
+  flex: 1;
+  word-break: break-word;
+}
+
+.log-info .log-level {
+  color: var(--accent);
+}
+
+.log-error .log-level {
+  color: #ff6464;
+}
+
+.log-warn .log-level {
+  color: #ffaa00;
+}
+
+.log-debug .log-level {
+  color: var(--text-secondary);
+}

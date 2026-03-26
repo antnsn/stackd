@@ -1,0 +1,61 @@
+.app-grid {
+  padding: 20px;
+  height: 100%;
+}
+
+.app-grid h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.grid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grid-item {
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.grid-item:hover {
+  background: #353535;
+  border-color: var(--accent);
+}
+
+.app-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.app-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  display: inline-block;
+  font-weight: 600;
+}
+
+.app-status[data-status="running"] {
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--accent);
+}
+
+.app-status[data-status="stopped"] {
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff6464;
+}
+
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
