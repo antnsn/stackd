@@ -8,10 +8,24 @@ export function App() {
   const [apps, setApps] = useState([])
 
   useEffect(() => {
-    // Fetch apps from backend
-    fetch('/api/apps')
+    fetch('/api/status')
       .then(r => r.json())
-      .then(data => setApps(data))
+      .then(data => {
+        const containers = []
+        for (const repo of data.repos || []) {
+          for (const stack of repo.stacks || []) {
+            for (const c of stack.containers || []) {
+              containers.push({
+                id: c.name,
+                name: c.name,
+                status: c.status,
+                version: c.image,
+              })
+            }
+          }
+        }
+        setApps(containers)
+      })
       .catch(() => setApps([]))
   }, [])
 

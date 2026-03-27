@@ -76,14 +76,20 @@ func (s *Server) registerRoutes() {
 		s.mux.Handle("GET /assets/", http.FileServer(http.FS(staticFS)))
 	}
 
-	// GET / — serve the SPA shell (and any other static files at the root)
+	// GET / — serve index.html for the root; for all other paths try the
+	// embedded dist FS (covers favicon.svg, icons.svg, etc. from public/).
+	fileServer := http.FileServer(http.FS(staticFS))
 	s.mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
+		if r.URL.Path == "/" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(ui.IndexHTML)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(ui.IndexHTML)
+		if staticFS != nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		http.NotFound(w, r)
 	})
 
 	// GET /api/status — full state snapshot

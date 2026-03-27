@@ -11,6 +11,7 @@ RUN npm ci
 
 # Copy source code and config
 COPY internal/ui/src ./src
+COPY internal/ui/public ./public
 COPY internal/ui/index.html ./
 COPY internal/ui/vite.config.js ./
 

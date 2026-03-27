@@ -3,26 +3,20 @@ import './AppDetail.css'
 
 export function AppDetail({ app, onClose }) {
   const [logs, setLogs] = useState([])
-  const [ws, setWs] = useState(null)
 
   useEffect(() => {
-    // Connect to WebSocket for live logs
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/logs/${app.id}`
-    const websocket = new WebSocket(wsUrl)
+    const es = new EventSource(`/api/logs/${app.id}`)
 
-    websocket.onmessage = (event) => {
-      const logEntry = JSON.parse(event.data)
-      setLogs(prev => [...prev, logEntry].slice(-100)) // Keep last 100 logs
+    es.onmessage = (event) => {
+      setLogs(prev => [...prev, event.data].slice(-100))
     }
 
-    websocket.onerror = () => {
-      console.error('WebSocket connection error')
+    es.onerror = () => {
+      es.close()
     }
-
-    setWs(websocket)
 
     return () => {
-      websocket.close()
+      es.close()
     }
   }, [app.id])
 
@@ -40,7 +34,7 @@ export function AppDetail({ app, onClose }) {
         </div>
         {app.version && (
           <div class="info-row">
-            <span class="label">Version:</span>
+            <span class="label">Image:</span>
             <span>{app.version}</span>
           </div>
         )}
@@ -50,11 +44,9 @@ export function AppDetail({ app, onClose }) {
         <h3>Live Logs</h3>
         <div class="logs-content">
           {logs.length > 0 ? (
-            logs.map((log, idx) => (
-              <div key={idx} class={`log-line log-${log.level}`}>
-                <span class="log-time">{log.timestamp}</span>
-                <span class="log-level">{log.level}</span>
-                <span class="log-message">{log.message}</span>
+            logs.map((line, idx) => (
+              <div key={idx} class="log-line">
+                {line}
               </div>
             ))
           ) : (
