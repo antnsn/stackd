@@ -32,9 +32,7 @@ RUN go mod download
 COPY . .
 
 # Copy built frontend assets from stage 1 to internal/ui/dist
-RUN mkdir -p /app/internal/ui/dist
-COPY --from=frontend-builder /app/internal/ui/dist/* /app/internal/ui/dist/
-COPY --from=frontend-builder /app/internal/ui/dist/index.html /app/internal/ui/dist/
+COPY --from=frontend-builder /app/internal/ui/dist/ /app/internal/ui/dist/
 
 # Build the Go binary
 RUN go build -o main .
