@@ -30,15 +30,20 @@ export function App() {
   }, [])
 
   return (
-    <div class="app-container">
-      <div class="grid-panel">
-        <AppGrid apps={apps} onSelect={setSelectedApp} />
-      </div>
-      {selectedApp && (
-        <div class="detail-panel">
-          <AppDetail app={selectedApp} onClose={() => setSelectedApp(null)} />
+    <div class="app-shell">
+      <header class="app-header">
+        <img src="/logo.svg" alt="stackd" class="app-logo" />
+      </header>
+      <div class="app-container">
+        <div class="grid-panel">
+          <AppGrid apps={apps} onSelect={setSelectedApp} />
         </div>
-      )}
+        {selectedApp && (
+          <div class="detail-panel">
+            <AppDetail app={selectedApp} onClose={() => setSelectedApp(null)} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -17,9 +17,29 @@ body {
   padding: 0;
 }
 
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  background: #0d1117;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-logo {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+
 .app-container {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   gap: 1px;
   background: var(--border-color);
 }

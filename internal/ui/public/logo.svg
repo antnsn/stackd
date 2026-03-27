@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160">
+  <defs>
+    <linearGradient id="stackGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3fb950;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background pill -->
+  <rect width="480" height="160" rx="16" fill="#0d1117"/>
+
+  <!-- Stack icon: 3 layered hexagonal slabs -->
+  <!-- Bottom slab -->
+  <polygon points="80,112 44,92 44,76 80,96 116,76 116,92" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <polygon points="80,96 44,76 80,56 116,76" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <polygon points="80,96 116,76 116,92 80,112" fill="#21262d" stroke="#30363d" stroke-width="1.5"/>
+
+  <!-- Middle slab -->
+  <polygon points="80,92 44,72 44,56 80,76 116,56 116,72" fill="#1c2128" stroke="#3d4b5a" stroke-width="1.5"/>
+  <polygon points="80,76 44,56 80,36 116,56" fill="url(#stackGrad)" opacity="0.3" stroke="#58a6ff" stroke-width="1.5"/>
+  <polygon points="80,76 116,56 116,72 80,92" fill="#21262d" stroke="#3d4b5a" stroke-width="1.5"/>
+
+  <!-- Top slab (accent) -->
+  <polygon points="80,72 44,52 44,36 80,56 116,36 116,52" fill="#1c2128" stroke="#58a6ff" stroke-width="1.5"/>
+  <polygon points="80,56 44,36 80,16 116,36" fill="url(#stackGrad)" filter="url(#glow)" stroke="#58a6ff" stroke-width="1.5"/>
+  <polygon points="80,56 116,36 116,52 80,72" fill="#21262d" stroke="#58a6ff" stroke-width="1.5"/>
+
+  <!-- Status dot -->
+  <circle cx="116" cy="36" r="5" fill="#3fb950" filter="url(#glow)"/>
+
+  <!-- Wordmark -->
+  <text x="152" y="90" font-family="'JetBrains Mono', 'SF Mono', 'Fira Code', monospace" font-size="52" font-weight="700" letter-spacing="-2" fill="#e6edf3">stackd</text>
+
+  <!-- Tagline -->
+  <text x="154" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="400" fill="#8b949e" letter-spacing="0.5">GitOps for Docker Compose</text>
+</svg>
