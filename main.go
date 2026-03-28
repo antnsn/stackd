@@ -344,6 +344,20 @@ store.UpdateStackContainers(st.RepoName, st.Name, containers)
 	}
 }
 
+// latestStartedAt returns the most recent StartedAt time across containers,
+// or the zero time if none are present. Used so stack.LastApply reflects
+// when containers actually last changed rather than when stackd last ran.
+func latestStartedAt(containers []state.ContainerDetail) time.Time {
+	var latest time.Time
+	for _, c := range containers {
+		if c.StartedAt.After(latest) {
+			latest = c.StartedAt
+		}
+	}
+	return latest
+}
+
+
 func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client) {
 if store != nil {
 store.UpdateStack(state.StackState{
@@ -397,6 +411,12 @@ StartedAt: dc.StartedAt,
 				Ports:     dc.Ports,
 			})
 }
+				// Use the most recent container StartedAt so the stack card
+				// shows when containers actually last changed, not when
+				// stackd last ran docker compose (resets on every restart).
+				if latest := latestStartedAt(st.Containers); !latest.IsZero() {
+					st.LastApply = latest
+				}
 }
 }
 }

@@ -69,7 +69,7 @@ export function AppDetail({ stack, onClose }) {
       <div class="stack-meta-grid">
         {stack.lastApply && (
           <div class="meta-item">
-            <span class="meta-label">Last deployed</span>
+        <span class="meta-label">Running since</span>
             <span class="meta-value">{formatRelative(stack.lastApply)}</span>
           </div>
         )}
