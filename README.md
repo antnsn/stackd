@@ -76,6 +76,10 @@ The dashboard gives you a live view of everything stackd manages:
 | `INFISICAL_TOKEN` | _(none)_ | Global Infisical service token |
 | `INFISICAL_ENV` | `prod` | Infisical environment (e.g. `dev`, `staging`, `prod`) |
 | `INFISICAL_URL` | _(none)_ | Self-hosted Infisical instance URL |
+| `BRANCH_DEFAULT` | `main` | Default git branch for all repos |
+| `BRANCH_<REPO>` | `BRANCH_DEFAULT` | Git branch for a specific repo (e.g. `BRANCH_HOMELAB=master`) |
+| `REMOTE_<REPO>` | `origin` | Git remote for a specific repo (e.g. `REMOTE_HOMELAB=upstream`) |
+| `STACKD_CONFIG` | _(none)_ | Path to optional `stackd.yaml` config file |
 
 ### Stacks Layout
 
@@ -92,6 +96,33 @@ The `STACKS_DIR_<REPO>` variable points to a directory of Docker Compose stacks.
 ```
 
 `REPO` is the uppercase name of the mount directory. For a repo mounted at `/repos/dockers`, set `STACKS_DIR_DOCKERS`.
+
+### Configuration File (Optional)
+
+Instead of managing many environment variables, you can use a `stackd.yaml` file.
+Place it in `REPOS_DIR` (default: `/repos/stackd.yaml`) or point to it with `STACKD_CONFIG`.
+
+Environment variables always take precedence over the config file.
+
+```yaml
+# stackd.yaml
+pullOnly: false
+syncIntervalSeconds: 60
+gitUser:
+  name: "githubSync"
+  email: "githubsync@localhost"
+repos:
+  - name: homelab
+    stacksDir: /stacks/homelab
+    branch: master
+    remote: origin
+    infisicalEnv: prod
+  - name: work
+    stacksDir: /stacks/work
+    branch: main
+    remote: origin
+    postSyncCmd: "echo synced"
+```
 
 ### Multi-Repo Example
 

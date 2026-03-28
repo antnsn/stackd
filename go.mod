@@ -2,7 +2,10 @@ module stackd
 
 go 1.25.0
 
-require github.com/docker/docker v28.5.2+incompatible
+require (
+	github.com/docker/docker v28.5.2+incompatible
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/Microsoft/go-winio v0.4.21 // indirect
