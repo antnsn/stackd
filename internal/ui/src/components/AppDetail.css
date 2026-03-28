@@ -1,3 +1,4 @@
+/* ── Detail panel ────────────────────────────────── */
 .app-detail {
   display: flex;
   flex-direction: column;
@@ -5,12 +6,12 @@
   background: var(--bg-primary);
 }
 
-/* Header */
+/* ── Header ──────────────────────────────────────── */
 .detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
   flex-shrink: 0;
@@ -19,29 +20,40 @@
 .detail-header__title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
+/* Breadcrumb: repo name — muted, small */
 .detail-repo {
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
+/* Breadcrumb: separator */
 .detail-sep {
-  color: var(--border-color);
-  font-size: 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 2px;
+  user-select: none;
 }
 
+/* Breadcrumb: stack name — prominent */
 .detail-stack-name {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
+/* P0-3 fix: aria-label="Close" added in JSX         */
+/* P1-1 fix: transition: all → specific properties   */
+/* P1-2 fix: focus-visible added                     */
 .close-btn {
-  background: none;
+  background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   width: 28px;
@@ -53,15 +65,22 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s;
+  /* Specific properties only */
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 
 .close-btn:hover {
-  border-color: #f85149;
-  color: #f85149;
+  border-color: var(--status-stopped);
+  color: var(--status-stopped);
+  background: rgba(248, 81, 73, 0.08);
 }
 
-/* Stack metadata grid */
+.close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Stack metadata grid ─────────────────────────── */
 .stack-meta-grid {
   display: flex;
   flex-wrap: wrap;
@@ -78,9 +97,12 @@
   min-width: 0;
 }
 
-.meta-item--error { background: rgba(248, 81, 73, 0.05); }
+.meta-item--error {
+  background: rgba(248, 81, 73, 0.05);
+}
 
 .meta-label {
+  font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -90,6 +112,7 @@
 }
 
 .meta-value {
+  font-family: var(--font-ui);
   font-size: 13px;
   color: var(--text-primary);
   overflow: hidden;
@@ -99,14 +122,16 @@
 }
 
 .meta-value--mono {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-mono);
 }
 
-.meta-item--error .meta-value { color: #f85149; }
+.meta-item--error .meta-value {
+  color: var(--status-stopped);
+}
 
-/* Container tabs */
+/* ── Container tabs (one tab per container) ──────── */
 .container-tabs {
   display: flex;
   gap: 2px;
@@ -117,6 +142,7 @@
   flex-shrink: 0;
 }
 
+/* P1-1 fix: specific transitions; P1-2 fix: focus-visible */
 .container-tab {
   display: flex;
   align-items: center;
@@ -126,27 +152,58 @@
   border: 1px solid transparent;
   background: none;
   color: var(--text-secondary);
+  font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+  /* Specific properties only */
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  /* Minimum touch target */
+  min-height: 32px;
 }
 
-.container-tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-.container-tab--active { background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-primary); }
+.container-tab:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
 
+.container-tab--active {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.container-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Status dots (in container tabs) ─────────────── */
+/* P1-9 fix: 10px + glow ring (was 6px, no glow) */
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.status-dot--running { background: var(--status-running); }
-.status-dot--stopped, .status-dot--exited { background: var(--status-stopped); }
-.status-dot--restarting { background: var(--status-degraded); }
+.status-dot--running {
+  background: var(--status-running);
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.2);
+}
 
-/* Container detail */
+.status-dot--stopped,
+.status-dot--exited {
+  background: var(--status-stopped);
+  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.2);
+}
+
+.status-dot--restarting {
+  background: var(--status-degraded);
+  box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.2);
+}
+
+/* ── Container detail shell ──────────────────────── */
 .container-detail {
   display: flex;
   flex-direction: column;
@@ -154,7 +211,8 @@
   overflow: hidden;
 }
 
-/* Info tabs (Logs / Env / Info) */
+/* ── Info tabs (Logs / Env / Info) ───────────────── */
+/* P1-1 fix: specific transition; P1-2 fix: focus-visible */
 .info-tabs {
   display: flex;
   gap: 1px;
@@ -170,28 +228,46 @@
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
+  font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  /* Specific properties only */
+  transition: color 0.1s, border-bottom-color 0.1s;
   margin-bottom: -1px;
+  /* Minimum touch target */
+  min-height: 34px;
 }
 
-.info-tab:hover { color: var(--text-primary); }
-.info-tab--active { color: var(--accent); border-bottom-color: var(--accent); }
+.info-tab:hover {
+  color: var(--text-primary);
+}
 
-/* Logs */
+/* P1-3 fix: accent is now indigo (via --accent CSS var) */
+.info-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.info-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Log viewer ──────────────────────────────────── */
+/* Darkest bg — creates contrast against panel chrome */
 .logs-content {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  background: #0a0c10;
+  background: var(--bg-primary);
 }
 
 .logs-empty {
-  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  color: var(--text-muted);
   padding: 20px;
   text-align: center;
 }
@@ -201,69 +277,105 @@
   gap: 10px;
   padding: 1px 4px;
   border-radius: 2px;
+  /* Reserve space for left-border on error/warn; transparent by default */
+  border-left: 2px solid transparent;
 }
 
-.log-line:hover { background: rgba(255,255,255,0.03); }
+.log-line:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
 
+/* P1-13 fix: timestamp min-width + muted color */
 .log-time {
-  color: #484f58;
+  color: var(--text-muted);
   flex-shrink: 0;
   font-size: 11px;
   padding-top: 1px;
+  min-width: 80px;
 }
 
-.log-text { color: #adbac7; word-break: break-all; }
+.log-text {
+  color: #adbac7;
+  word-break: break-all;
+}
+
+/* P1-13 fix: left-border markers on error/warn lines */
+.log-error {
+  border-left-color: var(--status-stopped);
+  padding-left: 6px;
+}
 .log-error .log-text { color: #ff7b72; }
+
+.log-warn {
+  border-left-color: var(--status-degraded);
+  padding-left: 6px;
+}
 .log-warn .log-text { color: #e3b341; }
+
 .log-debug .log-text { color: #79c0ff; }
 
-/* Env vars */
+/* ── Env vars ────────────────────────────────────── */
+/* Terminal-style display: key=value, monospace throughout */
 .env-list {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   overflow-y: auto;
   flex: 1;
 }
 
+/* P1-12: hover background; font-mono */
 .env-item {
   display: flex;
   gap: 0;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 5px 10px;
   border-radius: var(--radius-sm);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-subtle);
   overflow: hidden;
+  /* Specific transition */
+  transition: background 0.1s;
 }
 
+.env-item:hover {
+  background: var(--bg-hover);
+}
+
+/* P1-11 fix: var(--accent) instead of hardcoded #79c0ff */
 .env-key {
-  color: #79c0ff;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-weight: 500;
   flex-shrink: 0;
   min-width: 180px;
 }
 
-.env-key::after { content: '='; color: var(--border-color); }
+.env-key::after {
+  content: '=';
+  color: var(--text-muted);
+}
 
+/* P1-12 fix: var(--text-primary) instead of var(--text-secondary) */
 .env-value {
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
   word-break: break-all;
 }
 
 .env-value--redacted {
-  color: #d29922;
+  color: var(--text-muted);
   letter-spacing: 2px;
 }
 
-/* Container info */
+/* ── Container info ──────────────────────────────── */
 .container-info {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   overflow-y: auto;
   flex: 1;
 }
@@ -274,11 +386,12 @@
   gap: 12px;
   padding: 8px 12px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
 }
 
 .info-label {
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -290,12 +403,22 @@
 }
 
 .info-value {
+  font-family: var(--font-ui);
   font-size: 13px;
   color: var(--text-primary);
   word-break: break-all;
 }
 
+/* P1-8 fix: var(--font-mono) */
 .info-value--mono {
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--text-mono);
+}
+
+/* ── Empty state (reused in detail) ─────────────── */
+.empty-state-inline {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
 }

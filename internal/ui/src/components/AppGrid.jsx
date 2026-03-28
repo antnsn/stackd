@@ -53,19 +53,24 @@ function RepoGroup({ repo, selectedStack, isSyncing, onSelectStack, onForceSync 
     <div class="repo-group">
       <div class="repo-header">
         <div class="repo-header__left">
-          <span class={`repo-status-dot repo-status-dot--${repo.status}`} />
+          <span
+            class={`repo-status-dot repo-status-dot--${repo.status}`}
+            aria-hidden="true"
+          />
           <span class="repo-name">{repo.name}</span>
           {repo.lastSha && (
-            <span class="repo-sha">{repo.lastSha.slice(0, 7)}</span>
+            <span class="repo-sha" title={repo.lastSha}>{repo.lastSha.slice(0, 7)}</span>
           )}
         </div>
         <div class="repo-header__right">
           {repo.lastSync && (
             <span class="repo-last-sync">{formatRelative(repo.lastSync)}</span>
           )}
+          {/* P0-2 fix: aria-label instead of title-only */}
           <button
             class={`sync-btn ${isSyncing ? 'sync-btn--spinning' : ''}`}
             onClick={() => onForceSync(repo.name)}
+            aria-label={isSyncing ? `Syncing ${repo.name}…` : `Force git sync for ${repo.name}`}
             title={isSyncing ? 'Syncing…' : 'Force git sync'}
             disabled={isSyncing}
           >
@@ -75,7 +80,7 @@ function RepoGroup({ repo, selectedStack, isSyncing, onSelectStack, onForceSync 
       </div>
 
       {repo.lastError && (
-        <div class="repo-error">{repo.lastError}</div>
+        <div class="repo-error" role="alert">{repo.lastError}</div>
       )}
 
       <div class="stack-list">
@@ -104,14 +109,27 @@ function StackCard({ stack, isSelected, onSelect }) {
   const running = (stack.containers || []).filter(c => c.status === 'running').length
   const total = (stack.containers || []).length
 
+  // P0-4 fix: keyboard accessibility — Enter/Space activates the card
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onSelect()
+    }
+  }
+
   return (
     <div
       class={`stack-card stack-card--${status} ${isSelected ? 'stack-card--selected' : ''}`}
       onClick={onSelect}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={`${stack.name} — ${status}, ${running} of ${total} containers running`}
     >
       <div class="stack-card__header">
         <span class="stack-card__name">{stack.name}</span>
-        <span class={`stack-badge stack-badge--${status}`}>{status}</span>
+        <span class={`stack-badge stack-badge--${status}`} aria-hidden="true">{status}</span>
       </div>
       <div class="stack-card__meta">
         <span class="container-count">{running}/{total} running</span>

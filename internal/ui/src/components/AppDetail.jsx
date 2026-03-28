@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import './AppDetail.css'
 
+// ── Time helpers ──────────────────────────────────────
+// (defined here; consumed by multiple sub-components)
+
 function formatRelative(dateStr) {
   if (!dateStr) return ''
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -26,6 +29,8 @@ function classifyLog(text) {
   return ''
 }
 
+// ── AppDetail ─────────────────────────────────────────
+
 export function AppDetail({ stack, onClose }) {
   const [selectedContainer, setSelectedContainer] = useState(
     stack.containers?.[0]?.name ?? null
@@ -42,13 +47,23 @@ export function AppDetail({ stack, onClose }) {
       <div class="detail-header">
         <div class="detail-header__title">
           <span class="detail-repo">{stack.repoName}</span>
-          <span class="detail-sep">/</span>
+          <span class="detail-sep" aria-hidden="true">/</span>
           <h2 class="detail-stack-name">{stack.name}</h2>
           {stack.status && (
-            <span class={`stack-badge stack-badge--${stack.status}`}>{stack.status}</span>
+            <span class={`stack-badge stack-badge--${stack.status}`} aria-hidden="true">
+              {stack.status}
+            </span>
           )}
         </div>
-        <button class="close-btn" onClick={onClose} title="Close">✕</button>
+        {/* P0-3 fix: aria-label="Close" */}
+        <button
+          class="close-btn"
+          onClick={onClose}
+          aria-label="Close detail panel"
+          title="Close"
+        >
+          ✕
+        </button>
       </div>
 
       <div class="stack-meta-grid">
@@ -74,14 +89,16 @@ export function AppDetail({ stack, onClose }) {
 
       {stack.containers?.length > 0 ? (
         <>
-          <div class="container-tabs">
+          <div class="container-tabs" role="tablist" aria-label="Containers">
             {stack.containers.map(c => (
               <button
                 key={c.name}
+                role="tab"
+                aria-selected={c.name === selectedContainer}
                 class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
                 onClick={() => setSelectedContainer(c.name)}
               >
-                <span class={`status-dot status-dot--${c.status}`} />
+                <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
                 {c.name}
               </button>
             ))}
@@ -89,7 +106,7 @@ export function AppDetail({ stack, onClose }) {
           {container && <ContainerDetail container={container} />}
         </>
       ) : (
-        <div class="empty-state" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <div class="empty-state-inline">
           No containers found for this stack.
         </div>
       )}
@@ -97,15 +114,19 @@ export function AppDetail({ stack, onClose }) {
   )
 }
 
+// ── ContainerDetail ───────────────────────────────────
+
 function ContainerDetail({ container }) {
   const [tab, setTab] = useState('logs')
 
   return (
     <div class="container-detail">
-      <div class="info-tabs">
+      <div class="info-tabs" role="tablist" aria-label="Container detail sections">
         {[['logs', '📋 Logs'], ['env', '⚙ Env'], ['info', 'ℹ Info']].map(([t, label]) => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
             class={`info-tab ${tab === t ? 'info-tab--active' : ''}`}
             onClick={() => setTab(t)}
           >
@@ -114,11 +135,13 @@ function ContainerDetail({ container }) {
         ))}
       </div>
       {tab === 'logs' && <LogStream key={container.name} containerName={container.name} />}
-      {tab === 'env' && <EnvVars envs={container.env} />}
+      {tab === 'env'  && <EnvVars envs={container.env} />}
       {tab === 'info' && <ContainerInfo container={container} />}
     </div>
   )
 }
+
+// ── LogStream ─────────────────────────────────────────
 
 function LogStream({ containerName }) {
   const [logs, setLogs] = useState([])
@@ -139,40 +162,43 @@ function LogStream({ containerName }) {
   }, [logs])
 
   return (
-    <div class="logs-content">
+    <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
       {!logs.length && <div class="logs-empty">Waiting for logs…</div>}
       {logs.map((entry, i) => (
         <div key={i} class={`log-line ${classifyLog(entry.text)}`}>
-          <span class="log-time">{entry.time.toLocaleTimeString()}</span>
+          <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
           <span class="log-text">{entry.text}</span>
         </div>
       ))}
-      <div ref={endRef} />
+      <div ref={endRef} aria-hidden="true" />
     </div>
   )
 }
+
+// ── EnvVars ───────────────────────────────────────────
 
 function EnvVars({ envs }) {
   if (!envs?.length) {
     return (
       <div class="env-list">
-        <div style={{ color: 'var(--text-secondary)', padding: '20px', textAlign: 'center' }}>
-          No environment variables available.
-        </div>
+        <div class="empty-state-inline">No environment variables available.</div>
       </div>
     )
   }
   return (
-    <div class="env-list">
+    <div class="env-list" role="list" aria-label="Environment variables">
       {envs.map((e, i) => {
         const eq = e.indexOf('=')
         const key = eq >= 0 ? e.slice(0, eq) : e
         const val = eq >= 0 ? e.slice(eq + 1) : ''
         const isRedacted = val === '[redacted]'
         return (
-          <div key={i} class="env-item">
+          <div key={i} class="env-item" role="listitem">
             <span class="env-key">{key}</span>
-            <span class={`env-value ${isRedacted ? 'env-value--redacted' : ''}`}>
+            <span
+              class={`env-value ${isRedacted ? 'env-value--redacted' : ''}`}
+              aria-label={isRedacted ? `${key}: redacted` : undefined}
+            >
               {isRedacted ? '••••••' : val}
             </span>
           </div>
@@ -181,6 +207,10 @@ function EnvVars({ envs }) {
     </div>
   )
 }
+
+// ── ContainerInfo ─────────────────────────────────────
+// P0-1 fix: removed `require('../utils/time')` — formatRelative and
+// formatDateTime are already defined in this module's scope above.
 
 function ContainerInfo({ container }) {
   return (
@@ -202,7 +232,13 @@ function ContainerInfo({ container }) {
       {container.startedAt && container.startedAt !== '0001-01-01T00:00:00Z' && (
         <div class="info-row">
           <span class="info-label">Started</span>
-          <span class="info-value">{formatRelative(container.startedAt)} · {formatDateTime(container.startedAt)}</span>
+          <span class="info-value">
+            {formatRelative(container.startedAt)}
+            <span aria-hidden="true"> · </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+              {formatDateTime(container.startedAt)}
+            </span>
+          </span>
         </div>
       )}
       {container.ports?.length > 0 && (
