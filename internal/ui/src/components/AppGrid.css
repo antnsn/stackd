@@ -125,7 +125,7 @@
 /* P1-2 fix: focus-visible added                      */
 .sync-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: none;
   color: var(--text-secondary);
   width: 28px;
   height: 28px;
@@ -135,7 +135,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
   line-height: 1;
   touch-action: manipulation;
@@ -189,7 +189,7 @@
   text-align: left;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
+  border: none;
   border-left: 2px solid transparent;
   cursor: pointer;
   transition: background 0.1s, border-left-color 0.1s;
@@ -341,7 +341,7 @@
   font-size: 12px;
   color: var(--text-secondary);
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   padding: 3px 22px 3px 8px;
   cursor: pointer;
@@ -354,7 +354,7 @@
 }
 
 .sort-select:hover {
-  border-color: var(--accent-border);
+  border-color: var(--border-subtle);
   color: var(--text-primary);
 }
 
