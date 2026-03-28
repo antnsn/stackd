@@ -391,6 +391,7 @@
 /* P1-12: hover background; font-mono */
 .env-item {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -412,6 +413,7 @@
   font-weight: 500;
   flex-shrink: 0;
   min-width: 180px;
+  max-width: 100%;
 }
 
 .env-key::after {
@@ -424,11 +426,34 @@
   font-family: var(--font-mono);
   color: var(--text-primary);
   word-break: break-all;
+  min-width: 0;
+  flex: 1;
 }
 
 .env-value--redacted {
   color: var(--text-muted);
   letter-spacing: 2px;
+}
+
+@media (max-width: 600px) {
+  .env-item {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .env-key {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .env-key::after {
+    display: none;
+  }
+
+  .env-value {
+    padding-left: 8px;
+    color: var(--text-secondary);
+  }
 }
 
 /* ── Container info ──────────────────────────────── */
