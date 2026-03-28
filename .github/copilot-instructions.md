@@ -114,3 +114,31 @@ See `.github/agents/` for specialized agents covering each delivery area:
 | `testing.agent.md` | Unit tests for state, docker, server; integration test for sync loop |
 | `config-refactor.agent.md` | Configurable branch/remote per repo; optional YAML config file |
 | `ui-improvements.agent.md` | Fix stacks-vs-containers UX, add commit history, multi-log select |
+
+## Design Context
+
+> Maintained by `.impeccable.md` — updated via `/teach-impeccable`. Used by all UI work and Impeccable skills.
+
+### Users
+Home lab operators and small DevOps teams. They check this dashboard when something is
+wrong or to confirm everything is running. Technical, busy, impatient. Primary job:
+"Is everything up? What broke? Fix it now."
+
+### Brand Personality
+**Sharp. Straight to the point. No BS.**
+Emotional goal: **Power** — the user should feel *in command* of their infrastructure.
+
+### Aesthetic Direction
+- Dark only. Base `#0d1117`. No light mode.
+- Accent: electric indigo `#6c63ff` — reserved for actions/brand, never health states.
+- Typography: `DM Sans` or `Geist` for labels; `JetBrains Mono` / `IBM Plex Mono` for data.
+- Zero decoration — no gradients on chrome, no shadows on cards, 1px solid borders only.
+- Status colours (`#3fb950` / `#f85149` / `#d29922` / `#58a6ff`) are sacred — never reuse.
+- Motion: sync spin + detail fade-in only. Always respect `prefers-reduced-motion`.
+
+### Design Principles
+1. **Density over decoration** — every pixel carries information or structure.
+2. **Status first** — health state visible without reading text. Colour + shape.
+3. **Hierarchy is the UX** — Repo → Stack → Container must be obvious at every level.
+4. **Actions are explicit** — no hover-only affordances; force sync always one click away.
+5. **Fail loudly, recover gracefully** — errors shown immediately with a clear next action.
