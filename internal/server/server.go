@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"simpleGithubSync/internal/docker"
-	"simpleGithubSync/internal/state"
-	"simpleGithubSync/internal/ui"
+	"stackd/internal/docker"
+	"stackd/internal/state"
+	"stackd/internal/ui"
 )
 
 // Server is the dashboard HTTP server.

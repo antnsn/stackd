@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"simpleGithubSync/internal/docker"
-	"simpleGithubSync/internal/server"
-	"simpleGithubSync/internal/state"
+	"stackd/internal/docker"
+	"stackd/internal/server"
+	"stackd/internal/state"
 )
 
 // Function to get mounted volumes
@@ -55,7 +55,9 @@ func setupSSH() error {
 	}
 
 	// Scan GitHub host keys.
-	knownHostsCmd := exec.Command("ssh-keyscan", "github.com")
+	sshCtx, sshCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer sshCancel()
+	knownHostsCmd := exec.CommandContext(sshCtx, "ssh-keyscan", "github.com")
 	knownHosts, err := knownHostsCmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to scan GitHub SSH keys: %v", err)
@@ -81,14 +83,18 @@ func setupSSH() error {
 	return nil
 }
 
-func setGitIdentity(repoDir, userName, userEmail string) {
-	nameCmd := exec.Command("git", "config", "user.name", userName)
+func setGitIdentity(ctx context.Context, repoDir, userName, userEmail string) {
+	nameCtx, nameCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer nameCancel()
+	nameCmd := exec.CommandContext(nameCtx, "git", "config", "user.name", userName)
 	nameCmd.Dir = repoDir
 	if err := nameCmd.Run(); err != nil {
 		log.Printf("Failed to set git user.name in %s: %v", repoDir, err)
 	}
 
-	emailCmd := exec.Command("git", "config", "user.email", userEmail)
+	emailCtx, emailCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer emailCancel()
+	emailCmd := exec.CommandContext(emailCtx, "git", "config", "user.email", userEmail)
 	emailCmd.Dir = repoDir
 	if err := emailCmd.Run(); err != nil {
 		log.Printf("Failed to set git user.email in %s: %v", repoDir, err)
@@ -105,18 +111,62 @@ func setGitIdentity(repoDir, userName, userEmail string) {
 // If neither token nor toml is available and INFISICAL_ENABLED=true, a warning
 // is logged and the stack is applied without secrets injection.
 // INFISICAL_URL can point to a self-hosted Infisical instance.
+
+// buildComposeCmd constructs the exec.Cmd to apply a stack. It returns either a bare
+// "docker compose up -d" or an "infisical run -- docker compose up -d" command depending
+// on the INFISICAL_ENABLED env var and available credentials. The provided ctx is used
+// directly, so callers should set an appropriate deadline before calling.
+func buildComposeCmd(ctx context.Context, stackPath, stackName string) *exec.Cmd {
+	if strings.ToLower(os.Getenv("INFISICAL_ENABLED")) != "true" {
+		log.Printf("Applying stack %s (Infisical disabled)", stackName)
+		return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
+	}
+
+	args := []string{"run"}
+	configured := false
+
+	tomlPath := filepath.Join(stackPath, "infisical.toml")
+	if _, err := os.Stat(tomlPath); err == nil {
+		args = append(args, "--config="+tomlPath)
+		log.Printf("Stack %s: using per-stack infisical.toml", stackName)
+		configured = true
+	} else if token := os.Getenv("INFISICAL_TOKEN"); token != "" {
+		args = append(args, "--token="+token)
+		infisicalEnv := os.Getenv("INFISICAL_ENV")
+		if infisicalEnv == "" {
+			infisicalEnv = "prod"
+		}
+		args = append(args, "--env="+infisicalEnv)
+		log.Printf("Stack %s: using global INFISICAL_TOKEN (env: %s)", stackName, infisicalEnv)
+		configured = true
+	} else {
+		log.Printf("Warning: INFISICAL_ENABLED=true but no infisical.toml or INFISICAL_TOKEN found for stack %s, applying without secrets injection", stackName)
+	}
+
+	if configured {
+		if infisicalURL := os.Getenv("INFISICAL_URL"); infisicalURL != "" {
+			args = append(args, "--domain="+infisicalURL)
+		}
+		args = append(args, "--", "docker", "compose", "up", "-d")
+		return exec.CommandContext(ctx, "infisical", args...)
+	}
+
+	return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
+}
+
 // refreshContainers updates container details for all stacks whose StackDir is
 // known. Safe to call with a nil dockerClient (no-op).
-func refreshContainers(store *state.Store, dockerClient *docker.Client) {
+func refreshContainers(ctx context.Context, store *state.Store, dockerClient *docker.Client) {
 	if dockerClient == nil {
 		return
 	}
-	ctx := context.Background()
 	for _, st := range store.GetAllStacks() {
 		if st.StackDir == "" {
 			continue
 		}
-		ctrs, err := dockerClient.ListStackContainerDetails(ctx, st.StackDir)
+		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ctrs, err := dockerClient.ListStackContainerDetails(refreshCtx, st.StackDir)
+		cancel()
 		if err != nil {
 			log.Printf("refreshContainers %s/%s: %v", st.RepoName, st.Name, err)
 			ctrs = nil
@@ -135,7 +185,7 @@ func refreshContainers(store *state.Store, dockerClient *docker.Client) {
 	}
 }
 
-func applyStack(stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client) {
+func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client) {
 	if store != nil {
 		store.UpdateStack(state.StackState{
 			Name:       stackName,
@@ -146,45 +196,9 @@ func applyStack(stackPath, stackName, repoName string, store *state.Store, docke
 		})
 	}
 
-	infisicalEnabled := strings.ToLower(os.Getenv("INFISICAL_ENABLED")) == "true"
-
-	var cmd *exec.Cmd
-
-	if infisicalEnabled {
-		args := []string{"run"}
-
-		// Per-stack toml takes priority over global token
-		tomlPath := filepath.Join(stackPath, "infisical.toml")
-		if _, err := os.Stat(tomlPath); err == nil {
-			args = append(args, "--config="+tomlPath)
-			log.Printf("Stack %s: using per-stack infisical.toml", stackName)
-		} else if token := os.Getenv("INFISICAL_TOKEN"); token != "" {
-			args = append(args, "--token="+token)
-			infisicalEnv := os.Getenv("INFISICAL_ENV")
-			if infisicalEnv == "" {
-				infisicalEnv = "prod"
-			}
-			args = append(args, "--env="+infisicalEnv)
-			log.Printf("Stack %s: using global INFISICAL_TOKEN (env: %s)", stackName, infisicalEnv)
-		} else {
-			log.Printf("Warning: INFISICAL_ENABLED=true but no infisical.toml or INFISICAL_TOKEN found for stack %s, applying without secrets injection", stackName)
-			cmd = exec.Command("docker", "compose", "up", "-d")
-			cmd.Dir = stackPath
-			goto run
-		}
-
-		if infisicalURL := os.Getenv("INFISICAL_URL"); infisicalURL != "" {
-			args = append(args, "--domain="+infisicalURL)
-		}
-
-		args = append(args, "--", "docker", "compose", "up", "-d")
-		cmd = exec.Command("infisical", args...)
-	} else {
-		log.Printf("Applying stack %s (Infisical disabled)", stackName)
-		cmd = exec.Command("docker", "compose", "up", "-d")
-	}
-
-run:
+	applyCtx, applyCancel := context.WithTimeout(ctx, 300*time.Second)
+	defer applyCancel()
+	cmd := buildComposeCmd(applyCtx, stackPath, stackName)
 	cmd.Dir = stackPath
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
@@ -207,9 +221,9 @@ run:
 		} else {
 			st.Status = state.ApplyOK
 			if dockerClient != nil {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				ctrs, dErr := dockerClient.ListStackContainerDetails(ctx, stackPath)
+				ctrCtx, ctrCancel := context.WithTimeout(ctx, 30*time.Second)
+				ctrs, dErr := dockerClient.ListStackContainerDetails(ctrCtx, stackPath)
+				ctrCancel()
 				if dErr != nil {
 					log.Printf("Stack %s: container lookup failed: %v", stackName, dErr)
 				} else {
@@ -235,7 +249,7 @@ run:
 	}
 }
 
-func runStacksSync(repoDir string, store *state.Store, dockerClient *docker.Client) {
+func runStacksSync(ctx context.Context, repoDir string, store *state.Store, dockerClient *docker.Client) {
 	folderName := strings.ToUpper(filepath.Base(repoDir))
 	envVar := "STACKS_DIR_" + folderName
 	stacksDir := os.Getenv(envVar)
@@ -274,11 +288,11 @@ func runStacksSync(repoDir string, store *state.Store, dockerClient *docker.Clie
 			continue
 		}
 
-		applyStack(stackPath, stackName, repoName, store, dockerClient)
+		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient)
 	}
 }
 
-func runPostSyncCommand(repoDir string) {
+func runPostSyncCommand(ctx context.Context, repoDir string) {
 	folderName := strings.ToUpper(filepath.Base(repoDir))
 	envVar := "POST_SYNC_" + folderName
 	command := os.Getenv(envVar)
@@ -289,7 +303,9 @@ func runPostSyncCommand(repoDir string) {
 	}
 
 	log.Printf("Running post-sync command for %s: %s", repoDir, command)
-	cmd := exec.Command("sh", "-c", command)
+	postCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(postCtx, "sh", "-c", command)
 	cmd.Dir = repoDir
 	output, err := cmd.CombinedOutput()
 	if len(output) > 0 {
@@ -302,7 +318,7 @@ func runPostSyncCommand(repoDir string) {
 	}
 }
 
-func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gitUserEmail string, dockerClient *docker.Client) {
+func syncRepo(ctx context.Context, repoDir string, store *state.Store, pullOnly bool, gitUserName, gitUserEmail string, dockerClient *docker.Client) {
 	repoName := filepath.Base(repoDir)
 
 	if store != nil {
@@ -326,31 +342,38 @@ func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gi
 	}
 
 	// Mark the directory as safe for Git using --system instead of --global
-	configCmd := exec.Command("git", "config", "--system", "--add", "safe.directory", "*")
+	safeCtx, safeCancel := context.WithTimeout(ctx, 10*time.Second)
+	configCmd := exec.CommandContext(safeCtx, "git", "config", "--system", "--add", "safe.directory", "*")
 	if err := configCmd.Run(); err != nil {
 		log.Printf("Failed to mark directories as safe: %v", err)
-		// Continue execution even if marking as safe fails
 	}
+	safeCancel()
 
-	cmd := exec.Command("git", "fetch", "origin")
+	fetchCtx, fetchCancel := context.WithTimeout(ctx, 120*time.Second)
+	cmd := exec.CommandContext(fetchCtx, "git", "fetch", "origin")
 	cmd.Dir = repoDir
 	output, err := cmd.CombinedOutput()
+	fetchCancel()
 	if err != nil {
 		recordError(fmt.Sprintf("Failed to fetch in %s: %v. Output: %s", repoDir, err, string(output)))
 		return
 	}
 
-	local := exec.Command("git", "rev-parse", "@")
+	localCtx, localCancel := context.WithTimeout(ctx, 10*time.Second)
+	local := exec.CommandContext(localCtx, "git", "rev-parse", "@")
 	local.Dir = repoDir
 	localSHA, err := local.Output()
+	localCancel()
 	if err != nil {
 		recordError(fmt.Sprintf("Failed to get local SHA in %s: %v", repoDir, err))
 		return
 	}
 
-	remote := exec.Command("git", "rev-parse", "@{u}")
+	remoteCtx, remoteCancel := context.WithTimeout(ctx, 10*time.Second)
+	remote := exec.CommandContext(remoteCtx, "git", "rev-parse", "@{u}")
 	remote.Dir = repoDir
 	remoteSHA, err := remote.Output()
+	remoteCancel()
 	if err != nil {
 		recordError(fmt.Sprintf("Failed to get remote SHA in %s: %v", repoDir, err))
 		return
@@ -360,19 +383,23 @@ func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gi
 
 	if string(localSHA) != string(remoteSHA) {
 		log.Printf("Remote changes detected in %s. Pulling changes...", repoDir)
-		cmd := exec.Command("git", "pull", "origin", "main")
-		cmd.Dir = repoDir
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			recordError(fmt.Sprintf("Failed to pull in %s: %v. Output: %s", repoDir, err, string(output)))
+		pullCtx, pullCancel := context.WithTimeout(ctx, 120*time.Second)
+		pullCmd := exec.CommandContext(pullCtx, "git", "pull", "origin", "main")
+		pullCmd.Dir = repoDir
+		pullOut, pullErr := pullCmd.CombinedOutput()
+		pullCancel()
+		if pullErr != nil {
+			recordError(fmt.Sprintf("Failed to pull in %s: %v. Output: %s", repoDir, pullErr, string(pullOut)))
 			return
 		}
 		// Update SHA after pull
-		if sha, err := exec.Command("git", "-C", repoDir, "rev-parse", "HEAD").Output(); err == nil {
+		shaCtx, shaCancel := context.WithTimeout(ctx, 10*time.Second)
+		if sha, err := exec.CommandContext(shaCtx, "git", "-C", repoDir, "rev-parse", "HEAD").Output(); err == nil {
 			currentSHA = strings.TrimSpace(string(sha))
 		}
-		runPostSyncCommand(repoDir)
-		runStacksSync(repoDir, store, dockerClient)
+		shaCancel()
+		runPostSyncCommand(ctx, repoDir)
+		runStacksSync(ctx, repoDir, store, dockerClient)
 	}
 
 	if pullOnly {
@@ -389,11 +416,13 @@ func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gi
 	}
 
 	// Set git identity before committing
-	setGitIdentity(repoDir, gitUserName, gitUserEmail)
+	setGitIdentity(ctx, repoDir, gitUserName, gitUserEmail)
 
-	cmd = exec.Command("git", "add", ".")
+	addCtx, addCancel := context.WithTimeout(ctx, 30*time.Second)
+	cmd = exec.CommandContext(addCtx, "git", "add", ".")
 	cmd.Dir = repoDir
 	output, err = cmd.CombinedOutput()
+	addCancel()
 	if err != nil {
 		recordError(fmt.Sprintf("Failed to add changes in %s: %v. Output: %s", repoDir, err, string(output)))
 		return
@@ -404,9 +433,11 @@ func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gi
 		log.Printf("Failed to load location: %v", err)
 		loc = time.UTC
 	}
-	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Automated commit %s", time.Now().In(loc).Format("2006-01-02 15:04:05")))
+	commitCtx, commitCancel := context.WithTimeout(ctx, 30*time.Second)
+	cmd = exec.CommandContext(commitCtx, "git", "commit", "-m", fmt.Sprintf("Automated commit %s", time.Now().In(loc).Format("2006-01-02 15:04:05")))
 	cmd.Dir = repoDir
 	output, err = cmd.CombinedOutput()
+	commitCancel()
 	if err != nil {
 		log.Printf("No changes to commit in %s: %v. Output: %s", repoDir, err, string(output))
 		// Not a hard error — nothing to commit is normal.
@@ -422,13 +453,17 @@ func syncRepo(repoDir string, store *state.Store, pullOnly bool, gitUserName, gi
 	}
 
 	// Refresh SHA after commit
-	if sha, err := exec.Command("git", "-C", repoDir, "rev-parse", "HEAD").Output(); err == nil {
+	sha2Ctx, sha2Cancel := context.WithTimeout(ctx, 10*time.Second)
+	if sha, err := exec.CommandContext(sha2Ctx, "git", "-C", repoDir, "rev-parse", "HEAD").Output(); err == nil {
 		currentSHA = strings.TrimSpace(string(sha))
 	}
+	sha2Cancel()
 
-	cmd = exec.Command("git", "push", "origin", "main")
+	pushCtx, pushCancel := context.WithTimeout(ctx, 120*time.Second)
+	cmd = exec.CommandContext(pushCtx, "git", "push", "origin", "main")
 	cmd.Dir = repoDir
 	output, err = cmd.CombinedOutput()
+	pushCancel()
 	if err != nil {
 		recordError(fmt.Sprintf("Failed to push in %s: %v. Output: %s", repoDir, err, string(output)))
 		return
@@ -494,14 +529,16 @@ func main() {
 		dockerClient = nil
 	}
 
+	ctx := context.Background()
+
 	// --- Startup stack scan ---
 	// Populate the state store with known stacks at startup so the dashboard
 	// shows containers immediately, even when no pull has occurred yet.
 	if repoDirs, err := getMountedVolumes(); err == nil {
 		for _, repoDir := range repoDirs {
-			runStacksSync(repoDir, store, dockerClient)
+			runStacksSync(ctx, repoDir, store, dockerClient)
 		}
-		refreshContainers(store, dockerClient)
+		refreshContainers(ctx, store, dockerClient)
 	}
 
 	// --- Dashboard server ---
@@ -533,11 +570,11 @@ func main() {
 		}
 
 		for _, repoDir := range repoDirs {
-			syncRepo(repoDir, store, pullOnly, gitUserName, gitUserEmail, dockerClient)
+			syncRepo(ctx, repoDir, store, pullOnly, gitUserName, gitUserEmail, dockerClient)
 		}
 
 		// Refresh container state for all known stacks (startup + every tick).
-		refreshContainers(store, dockerClient)
+		refreshContainers(ctx, store, dockerClient)
 
 		// Wait for the next tick or a manual sync trigger.
 		select {
@@ -546,22 +583,22 @@ func main() {
 
 		case repoName := <-syncTrigger:
 			// drain any additional queued triggers so we don't double-sync
+		drainLoop:
 			for {
 				select {
 				case <-syncTrigger:
 				default:
-					goto drained
+					break drainLoop
 				}
 			}
-		drained:
 			log.Printf("Manual sync triggered for %q", repoName)
 			for _, repoDir := range repoDirs {
 				if filepath.Base(repoDir) == repoName {
-					syncRepo(repoDir, store, pullOnly, gitUserName, gitUserEmail, dockerClient)
+					syncRepo(ctx, repoDir, store, pullOnly, gitUserName, gitUserEmail, dockerClient)
 					break
 				}
 			}
-			refreshContainers(store, dockerClient)
+			refreshContainers(ctx, store, dockerClient)
 			ticker.Reset(syncInterval)
 		}
 	}
