@@ -9,7 +9,10 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"stackd/internal/docker"
@@ -24,6 +27,8 @@ type Server struct {
 	syncTrigger chan<- string
 	addr        string
 	mux         *http.ServeMux
+	handler     http.Handler // final handler with all middlewares applied
+	syncLimiter *rateLimiter
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
@@ -37,6 +42,15 @@ func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- str
 		mux:         http.NewServeMux(),
 	}
 	s.registerRoutes()
+
+	window := 5 * time.Second
+	if v, err := strconv.Atoi(os.Getenv("SYNC_RATE_LIMIT_SECONDS")); err == nil && v > 0 {
+		window = time.Duration(v) * time.Second
+	}
+	s.syncLimiter = newRateLimiter(window)
+
+	token := os.Getenv("DASHBOARD_TOKEN")
+	s.handler = securityHeaders(authMiddleware(token, s.mux))
 	return s
 }
 
@@ -44,7 +58,7 @@ func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- str
 func (s *Server) Start(ctx context.Context) {
 	srv := &http.Server{
 		Addr:         s.addr,
-		Handler:      s.mux,
+		Handler:      s.handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0, // 0 = no timeout; needed for SSE streams
 		IdleTimeout:  60 * time.Second,
@@ -126,6 +140,7 @@ type repoView struct {
 }
 
 // handleStatus returns the full state as JSON with stacks nested inside repos.
+// Note: InfisicalState only exposes Enabled and Env (the environment name), never the token value.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	full := s.store.GetAll()
 
@@ -174,6 +189,16 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.syncLimiter.Allow(repo) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "rate_limited",
+			"repo":   repo,
+		})
+		return
+	}
+
 	select {
 	case s.syncTrigger <- repo:
 		w.Header().Set("Content-Type", "application/json")
@@ -219,6 +244,68 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if err := s.docker.StreamLogs(ctx, containerName, sw); err != nil {
 		fmt.Fprintf(sw, "error: %v", err)
 	}
+}
+
+// authMiddleware protects API endpoints with bearer token authentication.
+// If DASHBOARD_TOKEN is empty, all requests pass through (auth disabled).
+func authMiddleware(token string, next http.Handler) http.Handler {
+	if token == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always allow: health probes, metrics, static assets, dashboard HTML
+		path := r.URL.Path
+		if path == "/healthz" || path == "/readyz" || path == "/metrics" ||
+			path == "/" || strings.HasPrefix(path, "/assets/") ||
+			!strings.HasPrefix(path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Validate Bearer token
+		auth := r.Header.Get("Authorization")
+		expected := "Bearer " + token
+		if auth != expected {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="stackd"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders adds standard security response headers to all responses.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimiter enforces a minimum time window between requests per key.
+type rateLimiter struct {
+	mu       sync.Mutex
+	lastTime map[string]time.Time
+	window   time.Duration
+}
+
+func newRateLimiter(window time.Duration) *rateLimiter {
+	return &rateLimiter{
+		lastTime: make(map[string]time.Time),
+		window:   window,
+	}
+}
+
+func (rl *rateLimiter) Allow(key string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	last, ok := rl.lastTime[key]
+	if ok && time.Since(last) < rl.window {
+		return false
+	}
+	rl.lastTime[key] = time.Now()
+	return true
 }
 
 // sseWriter formats each Write call as one or more SSE data events.
