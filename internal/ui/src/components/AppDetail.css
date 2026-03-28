@@ -55,7 +55,7 @@
 /* P1-2 fix: focus-visible added                     */
 .close-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: none;
   color: var(--text-secondary);
   width: 28px;
   height: 28px;
@@ -66,12 +66,10 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  /* Specific properties only */
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition: background 0.1s, color 0.1s;
 }
 
 .close-btn:hover {
-  border-color: var(--status-stopped);
   color: var(--status-stopped);
   background: rgba(248, 81, 73, 0.08);
 }
@@ -94,7 +92,6 @@
   display: flex;
   flex-direction: column;
   padding: 10px 20px;
-  border-right: 1px solid var(--border-color);
   min-width: 0;
 }
 
@@ -169,7 +166,6 @@
 
 .container-tab--active {
   background: var(--bg-tertiary);
-  border-color: var(--border-color);
   color: var(--text-primary);
 }
 
@@ -335,9 +331,7 @@
   padding: 5px 10px;
   border-radius: var(--radius-sm);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
   overflow: hidden;
-  /* Specific transition */
   transition: background 0.1s;
 }
 
@@ -387,7 +381,6 @@
   gap: 12px;
   padding: 8px 12px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
 }
 
@@ -497,19 +490,18 @@
     width: 100%;
     min-height: 44px;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
+    border: none;
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-family: var(--font-ui);
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.1s, border-color 0.1s;
+    transition: background 0.1s;
   }
 
   .mobile-close-btn:hover {
     background: var(--bg-hover);
-    border-color: var(--accent-border);
   }
 
   .mobile-close-btn:focus-visible {
