@@ -36,6 +36,8 @@ type ContainerDetail struct {
 	Image     string    `json:"image"`
 	Status    string    `json:"status"`
 	StartedAt time.Time `json:"startedAt"`
+	Env       []string  `json:"env"`   // env vars with sensitive values masked
+	Ports     []string  `json:"ports"` // ["8080:80/tcp", ...]
 }
 
 type StackState struct {
