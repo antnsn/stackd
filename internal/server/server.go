@@ -127,6 +127,17 @@ func (s *Server) registerRoutes() {
 	// GET /api/logs/{container} — SSE stream of Docker logs
 	s.mux.HandleFunc("GET /api/logs/{container}", s.handleLogs)
 
+	// POST /api/containers/{container}/start|stop|restart — lifecycle control
+	s.mux.HandleFunc("POST /api/containers/{container}/start", func(w http.ResponseWriter, r *http.Request) {
+		s.handleContainerAction(w, r, "start")
+	})
+	s.mux.HandleFunc("POST /api/containers/{container}/stop", func(w http.ResponseWriter, r *http.Request) {
+		s.handleContainerAction(w, r, "stop")
+	})
+	s.mux.HandleFunc("POST /api/containers/{container}/restart", func(w http.ResponseWriter, r *http.Request) {
+		s.handleContainerAction(w, r, "restart")
+	})
+
 	// GET /healthz — liveness probe (always 200)
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -278,6 +289,79 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.docker.StreamLogs(ctx, containerName, sw); err != nil {
 		fmt.Fprintf(sw, "error: %v", err)
+	}
+}
+
+// handleContainerAction dispatches start/stop/restart for a single container.
+func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, action string) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.docker == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "docker unavailable"})
+		return
+	}
+	name := r.PathValue("container")
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	var err error
+	switch action {
+	case "start":
+		err = s.docker.StartContainer(ctx, name)
+	case "stop":
+		err = s.docker.StopContainer(ctx, name)
+	case "restart":
+		err = s.docker.RestartContainer(ctx, name)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "unknown action"})
+		return
+	}
+	if err != nil {
+		slog.Error("container action failed", "action", action, "container", name, "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	slog.Info("container action succeeded", "action", action, "container", name)
+	// Refresh state asynchronously so the next /api/status poll reflects reality.
+	go s.refreshContainerState(name)
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// refreshContainerState re-fetches container details for every stack containing
+// the named container and updates the store.
+func (s *Server) refreshContainerState(containerName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	for _, st := range s.store.GetAllStacks() {
+		dockerDetails, err := s.docker.ListStackContainerDetails(ctx, st.StackDir)
+		if err != nil {
+			continue
+		}
+		found := false
+		for _, d := range dockerDetails {
+			if d.Name == containerName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		stateDetails := make([]state.ContainerDetail, 0, len(dockerDetails))
+		for _, d := range dockerDetails {
+			stateDetails = append(stateDetails, state.ContainerDetail{
+				ID:        d.ID,
+				Name:      d.Name,
+				Image:     d.Image,
+				Status:    d.Status,
+				StartedAt: d.StartedAt,
+				Env:       d.Env,
+				Ports:     d.Ports,
+			})
+		}
+		s.store.UpdateStackContainers(st.RepoName, st.Name, stateDetails)
 	}
 }
 

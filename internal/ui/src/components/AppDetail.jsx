@@ -12,7 +12,7 @@ function classifyLog(text) {
 
 // ── AppDetail ─────────────────────────────────────────
 
-export function AppDetail({ stack, onClose }) {
+export function AppDetail({ stack, onClose, onRefresh }) {
   const containers = stack.containers || []
   const [selectedContainer, setSelectedContainer] = useState(containers[0]?.name ?? null)
 
@@ -82,7 +82,7 @@ export function AppDetail({ stack, onClose }) {
               </button>
             ))}
           </div>
-          {container && <ContainerDetail container={container} />}
+          {container && <ContainerDetail container={container} onRefresh={onRefresh} />}
         </>
       ) : (
         <div class="empty-state-inline">
@@ -102,11 +102,67 @@ export function AppDetail({ stack, onClose }) {
 
 // ── ContainerDetail ───────────────────────────────────
 
-function ContainerDetail({ container }) {
+function ContainerDetail({ container, onRefresh }) {
   const [tab, setTab] = useState('logs')
+  const [actionState, setActionState] = useState(null) // 'loading'|{ok}|{err}
+  const [activeAction, setActiveAction] = useState(null)
+
+  const isRunning = container.status === 'running'
+  const isStopped = container.status === 'stopped' || container.status === 'exited'
+
+  const doAction = async (action) => {
+    setActiveAction(action)
+    setActionState('loading')
+    try {
+      const res = await fetch(`/api/containers/${encodeURIComponent(container.name)}/${action}`, { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`)
+      setActionState({ ok: true })
+      onRefresh?.()
+    } catch (e) {
+      setActionState({ err: e.message })
+    } finally {
+      setTimeout(() => { setActionState(null); setActiveAction(null) }, 2000)
+    }
+  }
+
+  const loading = actionState === 'loading'
 
   return (
     <div class="container-detail">
+      <div class="container-actions">
+        <div class="container-actions__btns">
+          <button
+            class={`ctrl-btn ctrl-btn--start ${activeAction === 'start' && loading ? 'ctrl-btn--loading' : ''}`}
+            onClick={() => doAction('start')}
+            disabled={loading || isRunning}
+            aria-label="Start container"
+            touch-action="manipulation"
+          >
+            {activeAction === 'start' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '▶'} Start
+          </button>
+          <button
+            class={`ctrl-btn ctrl-btn--stop ${activeAction === 'stop' && loading ? 'ctrl-btn--loading' : ''}`}
+            onClick={() => doAction('stop')}
+            disabled={loading || isStopped}
+            aria-label="Stop container"
+            touch-action="manipulation"
+          >
+            {activeAction === 'stop' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '■'} Stop
+          </button>
+          <button
+            class={`ctrl-btn ctrl-btn--restart ${activeAction === 'restart' && loading ? 'ctrl-btn--loading' : ''}`}
+            onClick={() => doAction('restart')}
+            disabled={loading}
+            aria-label="Restart container"
+            touch-action="manipulation"
+          >
+            {activeAction === 'restart' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Restart
+          </button>
+        </div>
+        {actionState?.ok && <span class="ctrl-feedback ctrl-feedback--ok">Done ✓</span>}
+        {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
+      </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
         {[['logs', 'Logs'], ['env', 'Env'], ['info', 'Info']].map(([t, label]) => (
           <button
