@@ -59,26 +59,12 @@ export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSele
 
   return (
     <div class="app-grid">
-      <div class="grid-sort-bar">
-        <label for="stack-sort" class="sort-label">Sort</label>
-        <select
-          id="stack-sort"
-          name="stack-sort"
-          class="sort-select"
-          value={sortOrder}
-          onChange={handleSortChange}
-          aria-label="Sort stacks"
-        >
-          {SORT_OPTIONS.map(o => (
-            <option key={o.key} value={o.key}>{o.label}</option>
-          ))}
-        </select>
-      </div>
       {repos.map(repo => (
         <RepoGroup
           key={repo.name}
           repo={repo}
           sortOrder={sortOrder}
+          onSortChange={handleSortChange}
           selectedStack={selectedStack}
           isSyncing={syncingRepos.has(repo.name)}
           repoSyncStatus={syncStatus?.[repo.name]}
@@ -90,7 +76,7 @@ export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSele
   )
 }
 
-function RepoGroup({ repo, sortOrder, selectedStack, isSyncing, repoSyncStatus, onSelectStack, onForceSync }) {
+function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, repoSyncStatus, onSelectStack, onForceSync }) {
   const statusClass = repoSyncStatus?.state === 'success' ? 'repo-header--flash-ok'
     : repoSyncStatus?.state === 'rateLimit' ? 'repo-header--flash-warn'
     : repoSyncStatus?.state === 'error' ? 'repo-header--flash-err'
@@ -134,6 +120,22 @@ function RepoGroup({ repo, sortOrder, selectedStack, isSyncing, repoSyncStatus, 
       {repo.lastError && (
         <div class="repo-error" role="alert">{repo.lastError}</div>
       )}
+
+      <div class="grid-sort-bar">
+        <label for={`stack-sort-${repo.name}`} class="sort-label">Sort</label>
+        <select
+          id={`stack-sort-${repo.name}`}
+          name="stack-sort"
+          class="sort-select"
+          value={sortOrder}
+          onChange={onSortChange}
+          aria-label="Sort stacks"
+        >
+          {SORT_OPTIONS.map(o => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+      </div>
 
       <div class="stack-list">
         {sortedStacks.length > 0 ? (
