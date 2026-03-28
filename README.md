@@ -80,6 +80,8 @@ The dashboard gives you a live view of everything stackd manages:
 | `BRANCH_<REPO>` | `BRANCH_DEFAULT` | Git branch for a specific repo (e.g. `BRANCH_HOMELAB=master`) |
 | `REMOTE_<REPO>` | `origin` | Git remote for a specific repo (e.g. `REMOTE_HOMELAB=upstream`) |
 | `STACKD_CONFIG` | _(none)_ | Path to optional `stackd.yaml` config file |
+| `DASHBOARD_TOKEN` | _(none)_ | Bearer token to protect the dashboard API. If unset, no auth required. |
+| `SYNC_RATE_LIMIT_SECONDS` | `5` | Minimum seconds between manual sync requests per repo |
 | `LOG_FORMAT` | `json` | Log output format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 
@@ -205,6 +207,30 @@ services:
     ports:
       - "8080:8080"
 ```
+
+## Security
+
+### Dashboard Authentication
+
+Set `DASHBOARD_TOKEN` to require bearer token authentication on all `/api/*` endpoints.
+The dashboard UI must include the token in the `Authorization` header.
+
+```yaml
+environment:
+  - DASHBOARD_TOKEN=your-secret-token
+```
+
+Endpoints that are always public (no auth required):
+- `GET /` — dashboard HTML
+- `GET /assets/*` — static assets
+- `GET /healthz` — liveness probe
+- `GET /readyz` — readiness probe
+- `GET /metrics` — Prometheus metrics
+
+### Rate Limiting
+
+Manual sync requests (`POST /api/sync/{repo}`) are rate-limited per repo.
+Default: 1 request per 5 seconds. Configure with `SYNC_RATE_LIMIT_SECONDS`.
 
 ## SSH Setup
 
