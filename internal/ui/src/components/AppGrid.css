@@ -313,7 +313,7 @@
 .grid-sort-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   padding: 6px 16px 10px;
   background: var(--bg-secondary);
 }
