@@ -11,8 +11,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 16px 20px 12px;
   background: var(--bg-secondary);
   flex-shrink: 0;
 }
@@ -44,7 +43,7 @@
 .detail-stack-name {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
   text-wrap: balance;
@@ -84,7 +83,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0;
-  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
   flex-shrink: 0;
 }
 
