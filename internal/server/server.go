@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -40,7 +41,7 @@ func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- str
 }
 
 // Start binds and serves. Blocks until the server exits.
-func (s *Server) Start() {
+func (s *Server) Start(ctx context.Context) {
 	srv := &http.Server{
 		Addr:         s.addr,
 		Handler:      s.mux,
@@ -48,8 +49,18 @@ func (s *Server) Start() {
 		WriteTimeout: 0, // 0 = no timeout; needed for SSE streams
 		IdleTimeout:  60 * time.Second,
 	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Dashboard server shutdown error: %v", err)
+		}
+	}()
+
 	log.Printf("Dashboard listening on %s", s.addr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("Dashboard server error: %v", err)
 	}
 }
