@@ -1,16 +1,5 @@
+import { formatRelative } from '../utils/time'
 import './AppGrid.css'
-
-function formatRelative(dateStr) {
-  if (!dateStr) return ''
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 
 function deriveStackStatus(stack) {
   if (stack.status === 'error') return 'error'
@@ -22,7 +11,7 @@ function deriveStackStatus(stack) {
   return 'stopped'
 }
 
-export function AppGrid({ repos, selectedStack, syncingRepos, onSelectStack, onForceSync }) {
+export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSelectStack, onForceSync }) {
   if (!repos.length) {
     return (
       <div class="empty-state">
@@ -40,6 +29,7 @@ export function AppGrid({ repos, selectedStack, syncingRepos, onSelectStack, onF
           repo={repo}
           selectedStack={selectedStack}
           isSyncing={syncingRepos.has(repo.name)}
+          repoSyncStatus={syncStatus?.[repo.name]}
           onSelectStack={onSelectStack}
           onForceSync={onForceSync}
         />
@@ -48,10 +38,15 @@ export function AppGrid({ repos, selectedStack, syncingRepos, onSelectStack, onF
   )
 }
 
-function RepoGroup({ repo, selectedStack, isSyncing, onSelectStack, onForceSync }) {
+function RepoGroup({ repo, selectedStack, isSyncing, repoSyncStatus, onSelectStack, onForceSync }) {
+  const statusClass = repoSyncStatus?.state === 'success' ? 'repo-header--flash-ok'
+    : repoSyncStatus?.state === 'rateLimit' ? 'repo-header--flash-warn'
+    : repoSyncStatus?.state === 'error' ? 'repo-header--flash-err'
+    : ''
+
   return (
     <div class="repo-group">
-      <div class="repo-header">
+      <div class={`repo-header ${statusClass}`}>
         <div class="repo-header__left">
           <span
             class={`repo-status-dot repo-status-dot--${repo.status}`}
@@ -63,10 +58,13 @@ function RepoGroup({ repo, selectedStack, isSyncing, onSelectStack, onForceSync 
           )}
         </div>
         <div class="repo-header__right">
-          {repo.lastSync && (
+          {repoSyncStatus?.message ? (
+            <span class={`sync-feedback sync-feedback--${repoSyncStatus.state}`} role="status">
+              {repoSyncStatus.message}
+            </span>
+          ) : repo.lastSync ? (
             <span class="repo-last-sync">{formatRelative(repo.lastSync)}</span>
-          )}
-          {/* P0-2 fix: aria-label instead of title-only */}
+          ) : null}
           <button
             class={`sync-btn ${isSyncing ? 'sync-btn--spinning' : ''}`}
             onClick={() => onForceSync(repo.name)}
@@ -109,7 +107,6 @@ function StackCard({ stack, isSelected, onSelect }) {
   const running = (stack.containers || []).filter(c => c.status === 'running').length
   const total = (stack.containers || []).length
 
-  // P0-4 fix: keyboard accessibility — Enter/Space activates the card
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()

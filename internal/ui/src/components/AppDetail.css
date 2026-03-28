@@ -422,3 +422,168 @@
   color: var(--text-secondary);
   font-family: var(--font-ui);
 }
+
+/* ── Container tabs bar (tabs + sort control) ────── */
+.container-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  gap: 8px;
+  padding-right: 12px;
+}
+
+.container-tabs-bar .container-tabs {
+  border-bottom: none;
+  flex: 1;
+  padding-right: 0;
+}
+
+/* ── Sort control ────────────────────────────────── */
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sort-label {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.sort-select {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 3px 22px 3px 8px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.sort-select:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+.sort-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Stream ended banner ─────────────────────────── */
+.logs-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.stream-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: rgba(210, 153, 34, 0.08);
+  border-bottom: 1px solid rgba(210, 153, 34, 0.25);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--status-degraded);
+  flex-shrink: 0;
+}
+
+.stream-reconnect {
+  background: transparent;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  color: var(--status-degraded);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  transition: background 0.1s;
+}
+
+.stream-reconnect:hover {
+  background: rgba(210, 153, 34, 0.12);
+}
+
+.stream-reconnect:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Status dots — no glow rings ─────────────────── */
+.status-dot--running  { background: var(--status-running);  box-shadow: none; }
+.status-dot--stopped,
+.status-dot--exited   { background: var(--status-stopped);  box-shadow: none; }
+.status-dot--restarting { background: var(--status-degraded); box-shadow: none; }
+
+/* ── Mobile: bottom close bar ────────────────────── */
+.mobile-close-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .close-btn--desktop {
+    display: none;
+  }
+
+  .mobile-close-bar {
+    display: flex;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .mobile-close-btn {
+    width: 100%;
+    min-height: 44px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+
+  .mobile-close-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-border);
+  }
+
+  .mobile-close-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Larger touch targets on mobile */
+  .container-tab {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+
+  .info-tab {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+}

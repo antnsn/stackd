@@ -43,7 +43,7 @@
   background: var(--accent-dim);
   border: 1px solid var(--accent-border);
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   letter-spacing: 0.2px;
 }
 
