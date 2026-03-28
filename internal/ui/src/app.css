@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* accounts for iOS Safari toolbar */
   background: var(--bg-primary);
 }
 
@@ -89,6 +90,7 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative; /* anchor for mobile overlay */
 }
 
 .grid-panel {
@@ -115,13 +117,21 @@
   }
   .grid-panel {
     width: 100%;
-    max-height: 45vh;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
     border-right: none;
-    border-bottom: 1px solid var(--border-color);
     overflow-y: auto;
   }
+  /* Detail panel overlays the full container on mobile */
   .detail-panel {
-    flex: 1;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    flex: none;
     min-height: 0;
   }
 }
