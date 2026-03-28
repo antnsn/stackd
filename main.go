@@ -329,7 +329,9 @@ Name:      dc.Name,
 Image:     dc.Image,
 Status:    dc.Status,
 StartedAt: dc.StartedAt,
-})
+			Env:       dc.Env,
+			Ports:     dc.Ports,
+		})
 }
 store.UpdateStackContainers(st.RepoName, st.Name, containers)
 		running := int64(0)
@@ -391,7 +393,9 @@ Name:      dc.Name,
 Image:     dc.Image,
 Status:    dc.Status,
 StartedAt: dc.StartedAt,
-})
+				Env:       dc.Env,
+				Ports:     dc.Ports,
+			})
 }
 }
 }
