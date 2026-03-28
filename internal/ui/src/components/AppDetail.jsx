@@ -2,31 +2,6 @@ import { useState, useEffect, useRef } from 'preact/hooks'
 import { formatRelative, formatDateTime } from '../utils/time'
 import './AppDetail.css'
 
-const SORT_OPTIONS = [
-  { key: 'name-asc',    label: 'Name A→Z' },
-  { key: 'name-desc',   label: 'Name Z→A' },
-  { key: 'uptime-desc', label: 'Uptime ↑' },
-  { key: 'uptime-asc',  label: 'Uptime ↓' },
-]
-
-function sortContainers(containers, order) {
-  const c = [...containers]
-  switch (order) {
-    case 'name-asc':
-      return c.sort((a, b) => a.name.localeCompare(b.name))
-    case 'name-desc':
-      return c.sort((a, b) => b.name.localeCompare(a.name))
-    case 'uptime-desc':
-      // longest running first = smallest startedAt (earliest date)
-      return c.sort((a, b) => new Date(a.startedAt || 0) - new Date(b.startedAt || 0))
-    case 'uptime-asc':
-      // shortest running first = largest startedAt (most recent date)
-      return c.sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0))
-    default:
-      return c
-  }
-}
-
 function classifyLog(text) {
   const l = text.toLowerCase()
   if (l.includes('error') || l.includes('fatal') || l.includes('panic') || l.includes('critical')) return 'log-error'
@@ -38,24 +13,14 @@ function classifyLog(text) {
 // ── AppDetail ─────────────────────────────────────────
 
 export function AppDetail({ stack, onClose }) {
-  const [sortOrder, setSortOrder] = useState(
-    () => localStorage.getItem('stackd:containerSort') || 'name-asc'
-  )
-  const sorted = sortContainers(stack.containers || [], sortOrder)
-  const [selectedContainer, setSelectedContainer] = useState(sorted[0]?.name ?? null)
+  const containers = stack.containers || []
+  const [selectedContainer, setSelectedContainer] = useState(containers[0]?.name ?? null)
 
   useEffect(() => {
-    const s = sortContainers(stack.containers || [], sortOrder)
-    setSelectedContainer(s[0]?.name ?? null)
+    setSelectedContainer((stack.containers || [])[0]?.name ?? null)
   }, [stack.name, stack.repoName])
 
-  const handleSortChange = (e) => {
-    const v = e.target.value
-    setSortOrder(v)
-    localStorage.setItem('stackd:containerSort', v)
-  }
-
-  const container = sorted.find(c => c.name === selectedContainer)
+  const container = containers.find(c => c.name === selectedContainer)
 
   return (
     <div class="app-detail">
@@ -101,37 +66,21 @@ export function AppDetail({ stack, onClose }) {
         )}
       </div>
 
-      {sorted.length > 0 ? (
+      {containers.length > 0 ? (
         <>
-          <div class="container-tabs-bar">
-            <div class="container-tabs" role="tablist" aria-label="Containers">
-              {sorted.map(c => (
-                <button
-                  key={c.name}
-                  role="tab"
-                  aria-selected={c.name === selectedContainer}
-                  class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
-                  onClick={() => setSelectedContainer(c.name)}
-                >
-                  <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
-                  {c.name}
-                </button>
-              ))}
-            </div>
-            <div class="sort-control">
-              <label for="container-sort" class="sort-label">Sort</label>
-              <select
-                id="container-sort"
-                class="sort-select"
-                value={sortOrder}
-                onChange={handleSortChange}
-                aria-label="Sort containers"
+          <div class="container-tabs" role="tablist" aria-label="Containers">
+            {containers.map(c => (
+              <button
+                key={c.name}
+                role="tab"
+                aria-selected={c.name === selectedContainer}
+                class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
+                onClick={() => setSelectedContainer(c.name)}
               >
-                {SORT_OPTIONS.map(o => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
-                ))}
-              </select>
-            </div>
+                <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
+                {c.name}
+              </button>
+            ))}
           </div>
           {container && <ContainerDetail container={container} />}
         </>

@@ -1,5 +1,31 @@
+import { useState } from 'preact/hooks'
 import { formatRelative } from '../utils/time'
 import './AppGrid.css'
+
+const SORT_OPTIONS = [
+  { key: 'name-asc',     label: 'Name A→Z' },
+  { key: 'name-desc',    label: 'Name Z→A' },
+  { key: 'uptime-long',  label: 'Running longest' },
+  { key: 'uptime-short', label: 'Started recently' },
+]
+
+function sortStacks(stacks, order) {
+  const s = [...stacks]
+  switch (order) {
+    case 'name-asc':
+      return s.sort((a, b) => a.name.localeCompare(b.name))
+    case 'name-desc':
+      return s.sort((a, b) => b.name.localeCompare(a.name))
+    case 'uptime-long':
+      // oldest lastApply first = longest running
+      return s.sort((a, b) => new Date(a.lastApply || 0) - new Date(b.lastApply || 0))
+    case 'uptime-short':
+      // newest lastApply first = started most recently
+      return s.sort((a, b) => new Date(b.lastApply || 0) - new Date(a.lastApply || 0))
+    default:
+      return s
+  }
+}
 
 function deriveStackStatus(stack) {
   if (stack.status === 'error') return 'error'
@@ -12,6 +38,16 @@ function deriveStackStatus(stack) {
 }
 
 export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSelectStack, onForceSync }) {
+  const [sortOrder, setSortOrder] = useState(
+    () => localStorage.getItem('stackd:stackSort') || 'name-asc'
+  )
+
+  const handleSortChange = (e) => {
+    const v = e.target.value
+    setSortOrder(v)
+    localStorage.setItem('stackd:stackSort', v)
+  }
+
   if (!repos.length) {
     return (
       <div class="empty-state">
@@ -23,10 +59,25 @@ export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSele
 
   return (
     <div class="app-grid">
+      <div class="grid-sort-bar">
+        <label for="stack-sort" class="sort-label">Sort</label>
+        <select
+          id="stack-sort"
+          class="sort-select"
+          value={sortOrder}
+          onChange={handleSortChange}
+          aria-label="Sort stacks"
+        >
+          {SORT_OPTIONS.map(o => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+      </div>
       {repos.map(repo => (
         <RepoGroup
           key={repo.name}
           repo={repo}
+          sortOrder={sortOrder}
           selectedStack={selectedStack}
           isSyncing={syncingRepos.has(repo.name)}
           repoSyncStatus={syncStatus?.[repo.name]}
@@ -38,11 +89,13 @@ export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSele
   )
 }
 
-function RepoGroup({ repo, selectedStack, isSyncing, repoSyncStatus, onSelectStack, onForceSync }) {
+function RepoGroup({ repo, sortOrder, selectedStack, isSyncing, repoSyncStatus, onSelectStack, onForceSync }) {
   const statusClass = repoSyncStatus?.state === 'success' ? 'repo-header--flash-ok'
     : repoSyncStatus?.state === 'rateLimit' ? 'repo-header--flash-warn'
     : repoSyncStatus?.state === 'error' ? 'repo-header--flash-err'
     : ''
+
+  const sortedStacks = sortStacks(repo.stacks || [], sortOrder)
 
   return (
     <div class="repo-group">
@@ -68,8 +121,8 @@ function RepoGroup({ repo, selectedStack, isSyncing, repoSyncStatus, onSelectSta
           <button
             class={`sync-btn ${isSyncing ? 'sync-btn--spinning' : ''}`}
             onClick={() => onForceSync(repo.name)}
-            aria-label={isSyncing ? `Syncing ${repo.name}…` : `Force git sync for ${repo.name}`}
-            title={isSyncing ? 'Syncing…' : 'Force git sync'}
+            aria-label={isSyncing ? `Syncing ${repo.name}…` : `Force sync ${repo.name}`}
+            title={isSyncing ? 'Syncing…' : 'Force sync'}
             disabled={isSyncing}
           >
             ↻
@@ -82,8 +135,8 @@ function RepoGroup({ repo, selectedStack, isSyncing, repoSyncStatus, onSelectSta
       )}
 
       <div class="stack-list">
-        {(repo.stacks || []).length > 0 ? (
-          repo.stacks.map(stack => (
+        {sortedStacks.length > 0 ? (
+          sortedStacks.map(stack => (
             <StackCard
               key={stack.name}
               stack={stack}
@@ -126,7 +179,13 @@ function StackCard({ stack, isSelected, onSelect }) {
     >
       <div class="stack-card__header">
         <span class="stack-card__name">{stack.name}</span>
-        <span class={`stack-badge stack-badge--${status}`} aria-hidden="true">{status}</span>
+        <span
+          class={`stack-badge stack-badge--${status}`}
+          aria-hidden="true"
+          title={status === 'degraded' ? 'Some containers are not running' : status === 'applying' ? 'Docker Compose is applying changes' : undefined}
+        >
+          {status}
+        </span>
       </div>
       <div class="stack-card__meta">
         <span class="container-count">{running}/{total} running</span>
