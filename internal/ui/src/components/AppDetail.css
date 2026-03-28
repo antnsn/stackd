@@ -156,10 +156,9 @@
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  /* Specific properties only */
   transition: background 0.1s, color 0.1s, border-color 0.1s;
-  /* Minimum touch target */
   min-height: 32px;
+  touch-action: manipulation;
 }
 
 .container-tab:hover {
@@ -231,11 +230,10 @@
   font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
-  /* Specific properties only */
   transition: color 0.1s, border-bottom-color 0.1s;
   margin-bottom: -1px;
-  /* Minimum touch target */
   min-height: 34px;
+  touch-action: manipulation;
 }
 
 .info-tab:hover {
@@ -263,6 +261,7 @@
   font-size: 12px;
   line-height: 1.6;
   background: var(--bg-primary);
+  overscroll-behavior: contain;
 }
 
 .logs-empty {
@@ -292,6 +291,7 @@
   font-size: 11px;
   padding-top: 1px;
   min-width: 80px;
+  font-variant-numeric: tabular-nums;
 }
 
 .log-text {

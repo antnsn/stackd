@@ -63,6 +63,8 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Suppress default blue tap highlight on mobile */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ── Animations ──────────────────────────────────── */

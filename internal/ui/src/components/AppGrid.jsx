@@ -160,20 +160,10 @@ function StackCard({ stack, isSelected, onSelect }) {
   const running = (stack.containers || []).filter(c => c.status === 'running').length
   const total = (stack.containers || []).length
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onSelect()
-    }
-  }
-
   return (
-    <div
+    <button
       class={`stack-card stack-card--${status} ${isSelected ? 'stack-card--selected' : ''}`}
       onClick={onSelect}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
       aria-pressed={isSelected}
       aria-label={`${stack.name} — ${status}, ${running} of ${total} containers running`}
     >
@@ -196,6 +186,6 @@ function StackCard({ stack, isSelected, onSelect }) {
       {stack.lastError && (
         <div class="stack-error">{stack.lastError}</div>
       )}
-    </div>
+    </button>
   )
 }

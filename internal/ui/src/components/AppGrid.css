@@ -135,10 +135,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Specific properties only — no transition: all */
   transition: background 0.1s, border-color 0.1s, color 0.1s;
   flex-shrink: 0;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .sync-btn:hover:not(:disabled) {
@@ -185,15 +185,19 @@
 /* P1-2 fix: focus-visible added                                                 */
 /* Design: border-left starts transparent, becomes accent on hover/selected     */
 .stack-card {
+  width: 100%;
+  text-align: left;
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  /* Full border for structure; left border drives status/selection signal */
   border: 1px solid var(--border-color);
   border-left: 2px solid transparent;
   cursor: pointer;
-  /* Specific properties only */
   transition: background 0.1s, border-left-color 0.1s;
   background: var(--bg-primary);
+  touch-action: manipulation;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
 .stack-card:hover {
@@ -240,6 +244,7 @@
   font-family: var(--font-ui);
   font-size: 11px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .stack-error {
