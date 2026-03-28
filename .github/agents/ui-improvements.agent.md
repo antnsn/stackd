@@ -7,10 +7,46 @@ model: "claude-sonnet-4.6"
 
 # stackd UI Improvements Agent
 
-You are a Preact/JavaScript engineer for **stackd**. A thorough UX audit has been
-completed. Your job is to implement the full modernisation of the dashboard.
+You are a Preact/JavaScript engineer and design-aware developer for **stackd**.
+You have access to the full **Impeccable** skill set. Use skill commands throughout
+this agent to ensure every UI change is high-quality, accessible, and distinctive.
 
 **Prerequisite:** All backend agents (Phases 1–3) must have completed.
+
+---
+
+## Skill Usage Guide
+
+The following Impeccable skills are installed and available as `/` commands.
+Invoke them at the appropriate phase of work:
+
+| When to invoke | Skill | Purpose |
+|---|---|---|
+| Before starting any UI work | `/teach-impeccable` | One-time: capture stackd's design context into `.impeccable.md` so all other skills share it |
+| After implementing a new component | `/audit` | Score accessibility, performance, theming, responsive design (P0–P3 severity) |
+| When layout or spacing feels off | `/arrange` | Fix visual rhythm, spacing inconsistencies, weak hierarchy |
+| When the design feels generic/safe | `/bolder` | Push visual identity — make it memorable, not cookie-cutter |
+| When adding motion/interaction | `/animate` | Add purposeful micro-interactions and transitions |
+| When typography looks wrong | `/typeset` | Fix font choices, scale, weight, readability |
+| When colours feel flat or dull | `/colorize` | Add strategic colour to monochromatic areas |
+| On finishing a feature | `/polish` | Final quality pass: alignment, spacing, micro-detail |
+| For UX scoring and critique | `/critique` | Evaluate against Nielsen's heuristics, persona-based testing |
+| For production hardening | `/harden` | Error states, i18n text overflow, edge case resilience |
+| For responsive/mobile work | `/adapt` | Breakpoints, fluid layouts, touch targets |
+| For component extraction | `/extract` | Consolidate CSS variables, reusable components, design tokens |
+
+**Critical workflow rule:** Do NOT skip `/audit` after implementing components —
+it catches real issues (missing aria-labels, broken focus states, `transition: all`,
+`outline: none` without replacement) before they reach production.
+
+**Design direction for stackd:**
+- Aesthetic: **industrial/utilitarian dark** — this is an ops tool, not a consumer app
+- Audience: home lab operators and small DevOps teams who stare at this for hours
+- Priority: clarity and density over decoration; every pixel must earn its place
+- Memorable element: the repo→stack→container drill-down hierarchy is the core UX
+- Constraints: Preact + Vite, no external UI libraries, CSS custom properties only
+
+---
 
 ## Audit Findings Summary
 
@@ -482,19 +518,84 @@ git commit -m "feat: modernise dashboard UI
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
+## Execution Phases
+
+### Phase 0 — Setup
+- Run `/teach-impeccable` once to capture stackd's design context
+- Read `internal/ui/src/` to understand current state
+
+### Phase 1 — Backend (Go)
+- Add `Env []string` and `Ports []string` to `ContainerDetail` in `internal/state/state.go`
+- Populate fields in `internal/docker/client.go` with masking for sensitive keys
+- Verify: `go build ./...`
+
+### Phase 2 — Frontend Implementation
+- Fix HTML title in `index.html`
+- Rewrite `App.jsx` (auto-refresh, error banner, force sync handler)
+- Rewrite `AppGrid.jsx` (repo→stack hierarchy, force sync button per repo)
+- Rewrite `AppDetail.jsx` (container tabs: Logs / Env / Info)
+- Create `src/utils/time.js` helpers
+- After each component: run `/audit` on that file and fix all P0 and P1 findings
+
+### Phase 3 — Design Quality (run these in order)
+1. `/typeset` — fix font choices, hierarchy, scale; no system fonts
+2. `/arrange` — fix spacing, visual rhythm, layout density
+3. `/colorize` — ensure status colours are distinct and purposeful
+4. `/animate` — add sync-button spin, tab transitions, log fade-in (respect `prefers-reduced-motion`)
+5. `/bolder` — push the industrial/utilitarian aesthetic; make it feel like a real ops tool
+6. `/adapt` — verify mobile layout, touch targets ≥44px, breakpoints at 768px
+
+### Phase 4 — Final Quality Gate
+- Run `/critique` — score against Nielsen's heuristics; fix any score below 6/10
+- Run `/harden` — error states, empty states, long container names, i18n text overflow
+- Run `/polish` — final pass on alignment, spacing, micro-details
+- Run `npm run build && go build ./...`
+
+### Phase 5 — Commit
+```bash
+git add -A
+git commit --no-gpg-sign -m "feat: modernise dashboard UI
+
+- Restore repo/stack/container hierarchy in AppGrid
+- Add force git sync button per repo (calls POST /api/sync/{repo})
+- Make logo larger and prominent in header
+- Add container detail tabs: Logs, Env vars, Info
+- Show Docker env vars (sensitive values masked as ••••••)
+- Show container ports, uptime, image in Info tab
+- Add log timestamps and error/warn colour coding
+- Add 5s auto-refresh with error banner + Retry
+- Fix HTML title to 'stackd'
+- Add responsive mobile layout
+- Audit and polish via Impeccable skill suite
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+```
+
+---
+
 ## Acceptance Criteria
 
+**Functional:**
 - [ ] HTML title is "stackd"
-- [ ] Logo visible at 36px in header
+- [ ] Logo visible and prominent in header
 - [ ] Repo → Stack → Container hierarchy in sidebar
 - [ ] Each repo shows: name, short SHA, last sync time, ↻ force sync button
-- [ ] Force sync calls POST /api/sync/{repo} with spin animation
+- [ ] Force sync calls `POST /api/sync/{repo}` with spin animation
 - [ ] Clicking a stack opens AppDetail
 - [ ] AppDetail has container tabs, each with Logs / Env / Info sub-tabs
-- [ ] Env tab shows env vars; sensitive keys show ••••••
-- [ ] Info tab shows ID, image, status, uptime, ports
-- [ ] Logs show timestamps + error/warn colours
-- [ ] Status auto-refreshes every 5 seconds
-- [ ] Error banner with Retry button when API unreachable
-- [ ] npm run build passes
-- [ ] go build ./... passes
+- [ ] Env tab: env vars shown, sensitive keys display as ••••••
+- [ ] Info tab: container ID, image, status, uptime, ports
+- [ ] Logs: timestamps + error/warn/debug colour coding
+- [ ] 5-second auto-refresh
+- [ ] Error banner with Retry when API unreachable
+- [ ] `npm run build` passes
+- [ ] `go build ./...` passes
+
+**Design quality (skill gates):**
+- [ ] `/audit` run — no P0 findings, all P1 findings resolved
+- [ ] `/critique` score ≥ 7/10 on all Nielsen heuristics
+- [ ] `/adapt` verified — mobile layout works at 375px, 768px, 1280px
+- [ ] `prefers-reduced-motion` respected on all animations
+- [ ] No `transition: all`, no `outline: none` without focus replacement
+- [ ] All icon-only buttons have `aria-label`
+- [ ] Interactive elements have visible focus states
