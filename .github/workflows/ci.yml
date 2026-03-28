@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+  push:
+    branches: ["master"]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: vet & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
