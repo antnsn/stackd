@@ -1,24 +1,30 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
+import { formatRelative, formatDateTime } from '../utils/time'
 import './AppDetail.css'
 
-// ── Time helpers ──────────────────────────────────────
-// (defined here; consumed by multiple sub-components)
+const SORT_OPTIONS = [
+  { key: 'name-asc',    label: 'Name A→Z' },
+  { key: 'name-desc',   label: 'Name Z→A' },
+  { key: 'uptime-desc', label: 'Uptime ↑' },
+  { key: 'uptime-asc',  label: 'Uptime ↓' },
+]
 
-function formatRelative(dateStr) {
-  if (!dateStr) return ''
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
-
-function formatDateTime(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString()
+function sortContainers(containers, order) {
+  const c = [...containers]
+  switch (order) {
+    case 'name-asc':
+      return c.sort((a, b) => a.name.localeCompare(b.name))
+    case 'name-desc':
+      return c.sort((a, b) => b.name.localeCompare(a.name))
+    case 'uptime-desc':
+      // longest running first = smallest startedAt (earliest date)
+      return c.sort((a, b) => new Date(a.startedAt || 0) - new Date(b.startedAt || 0))
+    case 'uptime-asc':
+      // shortest running first = largest startedAt (most recent date)
+      return c.sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0))
+    default:
+      return c
+  }
 }
 
 function classifyLog(text) {
@@ -32,22 +38,31 @@ function classifyLog(text) {
 // ── AppDetail ─────────────────────────────────────────
 
 export function AppDetail({ stack, onClose }) {
-  const [selectedContainer, setSelectedContainer] = useState(
-    stack.containers?.[0]?.name ?? null
+  const [sortOrder, setSortOrder] = useState(
+    () => localStorage.getItem('stackd:containerSort') || 'name-asc'
   )
+  const sorted = sortContainers(stack.containers || [], sortOrder)
+  const [selectedContainer, setSelectedContainer] = useState(sorted[0]?.name ?? null)
 
   useEffect(() => {
-    setSelectedContainer(stack.containers?.[0]?.name ?? null)
+    const s = sortContainers(stack.containers || [], sortOrder)
+    setSelectedContainer(s[0]?.name ?? null)
   }, [stack.name, stack.repoName])
 
-  const container = stack.containers?.find(c => c.name === selectedContainer)
+  const handleSortChange = (e) => {
+    const v = e.target.value
+    setSortOrder(v)
+    localStorage.setItem('stackd:containerSort', v)
+  }
+
+  const container = sorted.find(c => c.name === selectedContainer)
 
   return (
     <div class="app-detail">
       <div class="detail-header">
         <div class="detail-header__title">
           <span class="detail-repo">{stack.repoName}</span>
-          <span class="detail-sep" aria-hidden="true">/</span>
+          <span class="detail-sep" aria-hidden="true">›</span>
           <h2 class="detail-stack-name">{stack.name}</h2>
           {stack.status && (
             <span class={`stack-badge stack-badge--${stack.status}`} aria-hidden="true">
@@ -55,9 +70,8 @@ export function AppDetail({ stack, onClose }) {
             </span>
           )}
         </div>
-        {/* P0-3 fix: aria-label="Close" */}
         <button
-          class="close-btn"
+          class="close-btn close-btn--desktop"
           onClick={onClose}
           aria-label="Close detail panel"
           title="Close"
@@ -69,7 +83,7 @@ export function AppDetail({ stack, onClose }) {
       <div class="stack-meta-grid">
         {stack.lastApply && (
           <div class="meta-item">
-        <span class="meta-label">Running since</span>
+            <span class="meta-label">Running since</span>
             <span class="meta-value">{formatRelative(stack.lastApply)}</span>
           </div>
         )}
@@ -87,21 +101,37 @@ export function AppDetail({ stack, onClose }) {
         )}
       </div>
 
-      {stack.containers?.length > 0 ? (
+      {sorted.length > 0 ? (
         <>
-          <div class="container-tabs" role="tablist" aria-label="Containers">
-            {stack.containers.map(c => (
-              <button
-                key={c.name}
-                role="tab"
-                aria-selected={c.name === selectedContainer}
-                class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
-                onClick={() => setSelectedContainer(c.name)}
+          <div class="container-tabs-bar">
+            <div class="container-tabs" role="tablist" aria-label="Containers">
+              {sorted.map(c => (
+                <button
+                  key={c.name}
+                  role="tab"
+                  aria-selected={c.name === selectedContainer}
+                  class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
+                  onClick={() => setSelectedContainer(c.name)}
+                >
+                  <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
+                  {c.name}
+                </button>
+              ))}
+            </div>
+            <div class="sort-control">
+              <label for="container-sort" class="sort-label">Sort</label>
+              <select
+                id="container-sort"
+                class="sort-select"
+                value={sortOrder}
+                onChange={handleSortChange}
+                aria-label="Sort containers"
               >
-                <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
-                {c.name}
-              </button>
-            ))}
+                {SORT_OPTIONS.map(o => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
           {container && <ContainerDetail container={container} />}
         </>
@@ -110,6 +140,13 @@ export function AppDetail({ stack, onClose }) {
           No containers found for this stack.
         </div>
       )}
+
+      {/* Mobile-only bottom close bar */}
+      <div class="mobile-close-bar">
+        <button class="mobile-close-btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
     </div>
   )
 }
@@ -122,7 +159,7 @@ function ContainerDetail({ container }) {
   return (
     <div class="container-detail">
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['logs', '📋 Logs'], ['env', '⚙ Env'], ['info', 'ℹ Info']].map(([t, label]) => (
+        {[['logs', 'Logs'], ['env', 'Env'], ['info', 'Info']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
@@ -145,16 +182,28 @@ function ContainerDetail({ container }) {
 
 function LogStream({ containerName }) {
   const [logs, setLogs] = useState([])
+  const [streamEnded, setStreamEnded] = useState(false)
+  const esRef = useRef(null)
   const endRef = useRef(null)
 
-  useEffect(() => {
+  const startStream = () => {
+    if (esRef.current) esRef.current.close()
     setLogs([])
+    setStreamEnded(false)
     const es = new EventSource(`/api/logs/${containerName}`)
     es.onmessage = e => {
       setLogs(prev => [...prev, { text: e.data, time: new Date() }].slice(-200))
     }
-    es.onerror = () => es.close()
-    return () => es.close()
+    es.onerror = () => {
+      es.close()
+      setStreamEnded(true)
+    }
+    esRef.current = es
+  }
+
+  useEffect(() => {
+    startStream()
+    return () => esRef.current?.close()
   }, [containerName])
 
   useEffect(() => {
@@ -162,15 +211,23 @@ function LogStream({ containerName }) {
   }, [logs])
 
   return (
-    <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
-      {!logs.length && <div class="logs-empty">Waiting for logs…</div>}
-      {logs.map((entry, i) => (
-        <div key={i} class={`log-line ${classifyLog(entry.text)}`}>
-          <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
-          <span class="log-text">{entry.text}</span>
+    <div class="logs-wrapper">
+      {streamEnded && (
+        <div class="stream-banner" role="status" aria-live="assertive">
+          <span>Stream ended</span>
+          <button class="stream-reconnect" onClick={startStream}>↻ Reconnect</button>
         </div>
-      ))}
-      <div ref={endRef} aria-hidden="true" />
+      )}
+      <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
+        {!logs.length && !streamEnded && <div class="logs-empty">Waiting for logs…</div>}
+        {logs.map((entry, i) => (
+          <div key={i} class={`log-line ${classifyLog(entry.text)}`}>
+            <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
+            <span class="log-text">{entry.text}</span>
+          </div>
+        ))}
+        <div ref={endRef} aria-hidden="true" />
+      </div>
     </div>
   )
 }
@@ -209,8 +266,6 @@ function EnvVars({ envs }) {
 }
 
 // ── ContainerInfo ─────────────────────────────────────
-// P0-1 fix: removed `require('../utils/time')` — formatRelative and
-// formatDateTime are already defined in this module's scope above.
 
 function ContainerInfo({ container }) {
   return (
