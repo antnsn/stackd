@@ -5,13 +5,13 @@
   background: var(--bg-primary);
 }
 
-/* Header */
+/* ── Header ──────────────────────────────────────── */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  height: 56px;
+  height: 52px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
@@ -23,8 +23,9 @@
   gap: 12px;
 }
 
+/* P1-14 fix: 36px (was 32px) */
 .app-logo {
-  height: 32px;
+  height: 36px;
   width: auto;
 }
 
@@ -34,16 +35,19 @@
   gap: 12px;
 }
 
+/* P1-3 fix: use --accent-border instead of hardcoded cyan rgba */
 .infisical-badge {
+  font-family: var(--font-ui);
   font-size: 12px;
   color: var(--accent);
   background: var(--accent-dim);
-  border: 1px solid rgba(0, 212, 255, 0.2);
+  border: 1px solid var(--accent-border);
   padding: 3px 10px;
   border-radius: 12px;
+  letter-spacing: 0.2px;
 }
 
-/* Error banner */
+/* ── Error banner ────────────────────────────────── */
 .error-banner {
   display: flex;
   align-items: center;
@@ -51,25 +55,36 @@
   padding: 10px 24px;
   background: rgba(248, 81, 73, 0.1);
   border-bottom: 1px solid rgba(248, 81, 73, 0.3);
-  color: #f85149;
+  color: var(--status-stopped);
   font-size: 13px;
+  font-family: var(--font-ui);
+  flex-shrink: 0;
 }
 
 .error-banner button {
   background: rgba(248, 81, 73, 0.15);
   border: 1px solid rgba(248, 81, 73, 0.4);
-  color: #f85149;
+  color: var(--status-stopped);
   padding: 4px 12px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
+  font-family: var(--font-ui);
+  /* P1-1 fix: specific properties only, not transition: all */
+  transition: background 0.1s;
 }
 
 .error-banner button:hover {
-  background: rgba(248, 81, 73, 0.25);
+  background: rgba(248, 81, 73, 0.28);
 }
 
-/* Main layout */
+/* P1-2 fix: focus-visible on error retry button */
+.error-banner button:focus-visible {
+  outline: 2px solid var(--status-stopped);
+  outline-offset: 2px;
+}
+
+/* ── Main layout ─────────────────────────────────── */
 .app-container {
   display: flex;
   flex: 1;
@@ -84,6 +99,7 @@
   background: var(--bg-secondary);
 }
 
+/* P1-6 fix: 14px translateY per spec, 150ms duration */
 .detail-panel {
   flex: 1;
   overflow: hidden;
@@ -92,9 +108,22 @@
   animation: fadeIn 0.15s ease-out;
 }
 
-/* Responsive */
+/* ── Responsive ──────────────────────────────────── */
 @media (max-width: 768px) {
-  .app-container { flex-direction: column; }
-  .grid-panel { width: 100%; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border-color); }
-  .detail-panel { flex: 1; }
+  .app-container {
+    flex-direction: column;
+  }
+  .grid-panel {
+    width: 100%;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    overflow-y: auto;
+  }
+  .detail-panel {
+    flex: 1;
+    min-height: 0;
+  }
 }
+
+/* prefers-reduced-motion guard is in index.css */

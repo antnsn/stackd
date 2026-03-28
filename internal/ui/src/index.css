@@ -10,42 +10,87 @@ html, body, #app {
 }
 
 :root {
-  --bg-primary: #0d1117;
+  /* ── Backgrounds ─────────────────────────────── */
+  --bg-primary:   #0d1117;
   --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --border-color: #30363d;
-  --text-primary: #e6edf3;
+  --bg-tertiary:  #21262d;
+  --bg-hover:     rgba(255, 255, 255, 0.04);
+
+  /* ── Borders ─────────────────────────────────── */
+  --border-color:  #30363d;
+  --border-subtle: #21262d;
+
+  /* ── Text ────────────────────────────────────── */
+  --text-primary:   #e6edf3;
   --text-secondary: #8b949e;
-  --text-mono: #79c0ff;
-  --accent: #00d4ff;
-  --accent-dim: rgba(0, 212, 255, 0.12);
-  --status-running: #3fb950;
-  --status-stopped: #f85149;
+  --text-muted:     #484f58;
+  --text-mono:      #79c0ff;
+
+  /* ── Typography ──────────────────────────────── */
+  --font-ui:   'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* ── Brand accent — electric indigo ─────────── */
+  /* Used for actions, focus rings, and brand only. */
+  /* Never reuse for status indicators.            */
+  --accent:        #6c63ff;
+  --accent-dim:    rgba(108, 99, 255, 0.12);
+  --accent-border: rgba(108, 99, 255, 0.3);
+
+  /* ── Status colours — sacred ────────────────── */
+  /* green/red/yellow/blue = health states only.   */
+  /* Never repurpose these for anything else.      */
+  --status-running:  #3fb950;
+  --status-stopped:  #f85149;
   --status-degraded: #d29922;
   --status-applying: #58a6ff;
-  --status-error: #f85149;
-  --status-unknown: #8b949e;
-  --status-syncing: #58a6ff;
-  --status-ok: #3fb950;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --status-error:    #f85149;
+  --status-unknown:  #484f58;
+  --status-syncing:  #58a6ff;
+  --status-ok:       #3fb950;
+
+  /* ── Radius — tight, purposeful ─────────────── */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-primary);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Animations ──────────────────────────────────── */
+/* Only two animations are permitted:                */
+/*  1. spin  — communicates active work on sync btn  */
+/*  2. fadeIn — panel entry (14px, 150ms, ease-out)  */
 
 @keyframes spin {
   from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  to   { transform: rotate(360deg); }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* ── Reduced motion ──────────────────────────────── */
+/* Target only the permitted animations; do not      */
+/* blanket-disable all transitions (breaks usability)*/
+@media (prefers-reduced-motion: reduce) {
+  .detail-panel       { animation: none; }
+  .sync-btn--spinning { animation: none; opacity: 0.65; }
+  .repo-status-dot--syncing { animation: none; }
+  .stack-badge--applying    { animation: none; }
 }
