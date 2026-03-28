@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-connections/nat"
 )
 
 // ContainerDetail holds runtime information about a single container.
@@ -20,6 +21,8 @@ type ContainerDetail struct {
 	Image     string    `json:"image"`
 	Status    string    `json:"status"`
 	StartedAt time.Time `json:"startedAt"`
+	Env       []string  `json:"env"`   // env vars with sensitive values masked
+	Ports     []string  `json:"ports"` // ["8080:80/tcp", ...]
 }
 
 type ContainerStatus string
@@ -125,12 +128,60 @@ func (c *Client) ListStackContainerDetails(ctx context.Context, stackDir string)
 			d.ID = d.ID[:12]
 		}
 		info, err := c.cli.ContainerInspect(ctx, ct.ID)
-		if err == nil && info.State != nil {
-			d.StartedAt, _ = time.Parse(time.RFC3339Nano, info.State.StartedAt)
+		if err == nil {
+			if info.State != nil {
+				d.StartedAt, _ = time.Parse(time.RFC3339Nano, info.State.StartedAt)
+			}
+			if info.Config != nil {
+				d.Env = maskEnvVars(info.Config.Env)
+			}
+			if info.NetworkSettings != nil {
+				d.Ports = formatPorts(info.NetworkSettings.Ports)
+			}
 		}
 		details = append(details, d)
 	}
 	return details, nil
+}
+
+func maskEnvVars(envs []string) []string {
+	sensitive := []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "PASS", "CREDENTIAL"}
+	result := make([]string, 0, len(envs))
+	for _, e := range envs {
+		eq := strings.Index(e, "=")
+		if eq >= 0 {
+			upper := strings.ToUpper(e[:eq])
+			masked := false
+			for _, s := range sensitive {
+				if strings.Contains(upper, s) {
+					result = append(result, e[:eq]+"=[redacted]")
+					masked = true
+					break
+				}
+			}
+			if !masked {
+				result = append(result, e)
+			}
+		} else {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+func formatPorts(portMap nat.PortMap) []string {
+	var ports []string
+	for port, bindings := range portMap {
+		for _, b := range bindings {
+			if b.HostPort != "" {
+				ports = append(ports, b.HostPort+":"+port.Port()+"/"+port.Proto())
+			}
+		}
+		if len(bindings) == 0 {
+			ports = append(ports, port.Port()+"/"+port.Proto())
+		}
+	}
+	return ports
 }
 
 // ListStackContainers returns the names of all containers belonging to the
