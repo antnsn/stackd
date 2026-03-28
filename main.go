@@ -6,9 +6,12 @@ import (
 "log"
 "os"
 "os/exec"
+"os/signal"
 "path/filepath"
 "strconv"
 "strings"
+"sync"
+"syscall"
 "time"
 
 "gopkg.in/yaml.v3"
@@ -22,9 +25,85 @@ import (
 type AppConfig struct {
 PullOnly            bool
 SyncIntervalSeconds int
+SyncInterval        time.Duration
 GitUserName         string
 GitUserEmail        string
 ConfigFile          string // path to optional stackd.yaml; empty = not used
+}
+
+// syncBackoff tracks retry state for a single repo.
+type syncBackoff struct {
+mu          sync.Mutex
+failures    int
+nextAllowed time.Time
+suspended   bool // true after maxFailures consecutive failures
+}
+
+const maxSyncFailures = 10
+
+var repoBackoffs sync.Map // key: repo name (string), value: *syncBackoff
+var repoLocks sync.Map   // key: repo name (string), value: *sync.Mutex
+
+func getBackoff(repoName string) *syncBackoff {
+v, _ := repoBackoffs.LoadOrStore(repoName, &syncBackoff{})
+return v.(*syncBackoff)
+}
+
+// recordSyncSuccess resets the backoff for a repo.
+func recordSyncSuccess(repoName string) {
+b := getBackoff(repoName)
+b.mu.Lock()
+defer b.mu.Unlock()
+b.failures = 0
+b.nextAllowed = time.Time{}
+b.suspended = false
+}
+
+// recordSyncFailure increments failure count and sets next allowed time.
+// Returns true if the repo is now suspended (max failures reached).
+func recordSyncFailure(repoName string, baseInterval time.Duration) bool {
+b := getBackoff(repoName)
+b.mu.Lock()
+defer b.mu.Unlock()
+b.failures++
+if b.failures >= maxSyncFailures {
+b.suspended = true
+log.Printf("Repo %q suspended after %d consecutive failures; trigger manual sync to resume", repoName, b.failures)
+return true
+}
+multiplier := time.Duration(1 << b.failures) // 2, 4, 8, 16...
+backoff := multiplier * baseInterval
+maxBackoff := 8 * baseInterval
+if backoff > maxBackoff {
+backoff = maxBackoff
+}
+b.nextAllowed = time.Now().Add(backoff)
+log.Printf("Repo %q sync backoff: next attempt in %s (failure %d/%d)", repoName, backoff, b.failures, maxSyncFailures)
+return false
+}
+
+// shouldSkipSync returns true if the repo is in backoff or suspended.
+func shouldSkipSync(repoName string) bool {
+b := getBackoff(repoName)
+b.mu.Lock()
+defer b.mu.Unlock()
+if b.suspended {
+return true
+}
+if !b.nextAllowed.IsZero() && time.Now().Before(b.nextAllowed) {
+return true
+}
+return false
+}
+
+// resetBackoff resets backoff for a repo (called on manual sync trigger).
+func resetBackoff(repoName string) {
+b := getBackoff(repoName)
+b.mu.Lock()
+defer b.mu.Unlock()
+b.failures = 0
+b.nextAllowed = time.Time{}
+b.suspended = false
 }
 
 // RepoConfig holds per-repository configuration, derived from env vars or stackd.yaml.
@@ -201,17 +280,30 @@ return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 }
 
 // refreshContainers updates container details for all stacks whose StackDir is
-// known. Safe to call with a nil dockerClient (no-op).
-func refreshContainers(ctx context.Context, store *state.Store, dockerClient *docker.Client) {
-if dockerClient == nil {
+// known. Safe to call with a nil dockerClientPtr (no-op). Attempts reconnection
+// if *dockerClientPtr is nil.
+func refreshContainers(ctx context.Context, store *state.Store, dockerClientPtr **docker.Client) {
+if dockerClientPtr == nil {
 return
+}
+if *dockerClientPtr == nil {
+reconnCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+defer cancel()
+if c, err := docker.New(); err == nil {
+log.Printf("Docker client reconnected successfully")
+*dockerClientPtr = c
+} else {
+log.Printf("Docker reconnection failed: %v", err)
+_ = reconnCtx
+return
+}
 }
 for _, st := range store.GetAllStacks() {
 if st.StackDir == "" {
 continue
 }
 refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-ctrs, err := dockerClient.ListStackContainerDetails(refreshCtx, st.StackDir)
+ctrs, err := (*dockerClientPtr).ListStackContainerDetails(refreshCtx, st.StackDir)
 cancel()
 if err != nil {
 log.Printf("refreshContainers %s/%s: %v", st.RepoName, st.Name, err)
@@ -317,6 +409,7 @@ syncIntervalSeconds = v
 return AppConfig{
 PullOnly:            pullOnly,
 SyncIntervalSeconds: syncIntervalSeconds,
+SyncInterval:        time.Duration(syncIntervalSeconds) * time.Second,
 GitUserName:         gitUserName,
 GitUserEmail:        gitUserEmail,
 ConfigFile:          os.Getenv("STACKD_CONFIG"),
@@ -500,7 +593,14 @@ existing.Status = state.StatusError
 existing.LastError = msg
 store.UpdateRepo(existing)
 }
+recordSyncFailure(repoName, appCfg.SyncInterval)
 }
+
+// Ensure only one sync runs per repo at a time.
+lockVal, _ := repoLocks.LoadOrStore(cfg.Name, &sync.Mutex{})
+repoMu := lockVal.(*sync.Mutex)
+repoMu.Lock()
+defer repoMu.Unlock()
 
 // Mark the directory as safe for Git using --system instead of --global
 safeCtx, safeCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -573,6 +673,7 @@ LastSHA:  currentSHA,
 Status:   state.StatusOK,
 })
 }
+recordSyncSuccess(repoName)
 return
 }
 
@@ -610,6 +711,7 @@ LastSHA:  currentSHA,
 Status:   state.StatusOK,
 })
 }
+recordSyncSuccess(repoName)
 return
 }
 
@@ -639,6 +741,7 @@ LastSHA:  currentSHA,
 Status:   state.StatusOK,
 })
 }
+recordSyncSuccess(repoName)
 }
 
 func main() {
@@ -667,13 +770,17 @@ Env:     os.Getenv("INFISICAL_ENV"),
 })
 
 // --- Docker client (used for container details and log streaming) ---
-dockerClient, err := docker.New()
-if err != nil {
+var dockerClient *docker.Client
+if c, err := docker.New(); err == nil {
+dockerClient = c
+} else {
 log.Printf("Warning: Docker client unavailable (%v) — container details and log streaming disabled", err)
-dockerClient = nil
 }
 
-ctx := context.Background()
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+var wg sync.WaitGroup
 
 // --- Startup stack scan ---
 // Populate the state store with known stacks at startup so the dashboard
@@ -682,7 +789,7 @@ if repoCfgs, err := loadRepoConfigs(appCfg); err == nil {
 for _, cfg := range repoCfgs {
 runStacksSync(ctx, cfg, store, dockerClient)
 }
-refreshContainers(ctx, store, dockerClient)
+refreshContainers(ctx, store, &dockerClient)
 }
 
 // --- Dashboard server ---
@@ -700,12 +807,31 @@ log.Printf("Invalid DASHBOARD_PORT value %q, using default 8080", portStr)
 }
 
 srv := server.New(store, dockerClient, syncTrigger, dashPort)
-go srv.Start()
+go srv.Start(ctx)
 }
 
 syncInterval := time.Duration(appCfg.SyncIntervalSeconds) * time.Second
 ticker := time.NewTicker(syncInterval)
 defer ticker.Stop()
+
+doSyncRound := func(cfgs []RepoConfig) {
+wg.Add(1)
+go func() {
+defer wg.Done()
+for _, cfg := range cfgs {
+if ctx.Err() != nil {
+return // shutdown in progress, stop starting new syncs
+}
+if shouldSkipSync(cfg.Name) {
+log.Printf("Skipping sync for %q (backoff)", cfg.Name)
+continue
+}
+syncRepo(ctx, cfg, appCfg, store, dockerClient)
+}
+refreshContainers(ctx, store, &dockerClient)
+}()
+wg.Wait() // keep sequential behaviour; WaitGroup lets shutdown detect completion
+}
 
 for {
 repoCfgs, err := loadRepoConfigs(appCfg)
@@ -713,15 +839,23 @@ if err != nil {
 log.Fatalf("Failed to get mounted volumes: %v", err)
 }
 
-for _, cfg := range repoCfgs {
-syncRepo(ctx, cfg, appCfg, store, dockerClient)
-}
-
-// Refresh container state for all known stacks (startup + every tick).
-refreshContainers(ctx, store, dockerClient)
+doSyncRound(repoCfgs)
 
 // Wait for the next tick or a manual sync trigger.
 select {
+case <-ctx.Done():
+log.Printf("Shutdown signal received, waiting for in-flight operations to complete...")
+ticker.Stop()
+waitDone := make(chan struct{})
+go func() { wg.Wait(); close(waitDone) }()
+select {
+case <-waitDone:
+log.Printf("All operations completed, shutting down cleanly")
+case <-time.After(30 * time.Second):
+log.Printf("Shutdown timeout reached, forcing exit")
+}
+return
+
 case <-ticker.C:
 // regular interval — loop back to sync all repos
 
@@ -736,13 +870,14 @@ break drainLoop
 }
 }
 log.Printf("Manual sync triggered for %q", repoName)
+resetBackoff(repoName) // manual sync always resets backoff
 for _, cfg := range repoCfgs {
 if cfg.Name == repoName {
 syncRepo(ctx, cfg, appCfg, store, dockerClient)
 break
 }
 }
-refreshContainers(ctx, store, dockerClient)
+refreshContainers(ctx, store, &dockerClient)
 ticker.Reset(syncInterval)
 }
 }
