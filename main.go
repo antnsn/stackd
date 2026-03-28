@@ -3,7 +3,7 @@ package main
 import (
 "context"
 "fmt"
-"log"
+"log/slog"
 "os"
 "os/exec"
 "os/signal"
@@ -17,6 +17,7 @@ import (
 "gopkg.in/yaml.v3"
 
 "stackd/internal/docker"
+"stackd/internal/metrics"
 "stackd/internal/server"
 "stackd/internal/state"
 )
@@ -68,7 +69,7 @@ defer b.mu.Unlock()
 b.failures++
 if b.failures >= maxSyncFailures {
 b.suspended = true
-log.Printf("Repo %q suspended after %d consecutive failures; trigger manual sync to resume", repoName, b.failures)
+slog.Warn("repo suspended after consecutive failures", "repo", repoName, "failures", b.failures)
 return true
 }
 multiplier := time.Duration(1 << b.failures) // 2, 4, 8, 16...
@@ -78,7 +79,7 @@ if backoff > maxBackoff {
 backoff = maxBackoff
 }
 b.nextAllowed = time.Now().Add(backoff)
-log.Printf("Repo %q sync backoff: next attempt in %s (failure %d/%d)", repoName, backoff, b.failures, maxSyncFailures)
+slog.Warn("sync backoff", "repo", repoName, "backoff", backoff, "failure", b.failures, "maxFailures", maxSyncFailures)
 return false
 }
 
@@ -104,6 +105,17 @@ defer b.mu.Unlock()
 b.failures = 0
 b.nextAllowed = time.Time{}
 b.suspended = false
+}
+
+// redactSecretEnv returns "[redacted]" if the env var name looks sensitive.
+func redactSecretEnv(key, value string) string {
+	upper := strings.ToUpper(key)
+	for _, s := range []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "PASS", "CREDENTIAL"} {
+		if strings.Contains(upper, s) {
+			return "[redacted]"
+		}
+	}
+	return value
 }
 
 // RepoConfig holds per-repository configuration, derived from env vars or stackd.yaml.
@@ -201,7 +213,7 @@ sshKeyPath, knownHostsPath,
 if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 return fmt.Errorf("failed to write SSH config: %v", err)
 }
-log.Printf("SSH config written to %s", configPath)
+slog.Info("SSH config written", "path", configPath)
 
 // Tell git (and any child ssh process) to use our private config.
 os.Setenv("GIT_SSH_COMMAND", fmt.Sprintf("ssh -F %s", configPath))
@@ -214,7 +226,7 @@ defer nameCancel()
 nameCmd := exec.CommandContext(nameCtx, "git", "config", "user.name", userName)
 nameCmd.Dir = repoDir
 if err := nameCmd.Run(); err != nil {
-log.Printf("Failed to set git user.name in %s: %v", repoDir, err)
+slog.Warn("failed to set git user.name", "dir", repoDir, "err", err)
 }
 
 emailCtx, emailCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -222,7 +234,7 @@ defer emailCancel()
 emailCmd := exec.CommandContext(emailCtx, "git", "config", "user.email", userEmail)
 emailCmd.Dir = repoDir
 if err := emailCmd.Run(); err != nil {
-log.Printf("Failed to set git user.email in %s: %v", repoDir, err)
+slog.Warn("failed to set git user.email", "dir", repoDir, "err", err)
 }
 }
 
@@ -243,7 +255,7 @@ log.Printf("Failed to set git user.email in %s: %v", repoDir, err)
 // directly, so callers should set an appropriate deadline before calling.
 func buildComposeCmd(ctx context.Context, stackPath, stackName string) *exec.Cmd {
 if strings.ToLower(os.Getenv("INFISICAL_ENABLED")) != "true" {
-log.Printf("Applying stack %s (Infisical disabled)", stackName)
+slog.Info("applying stack", "stack", stackName, "infisical", false)
 return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 }
 
@@ -253,7 +265,7 @@ configured := false
 tomlPath := filepath.Join(stackPath, "infisical.toml")
 if _, err := os.Stat(tomlPath); err == nil {
 args = append(args, "--config="+tomlPath)
-log.Printf("Stack %s: using per-stack infisical.toml", stackName)
+slog.Info("stack using per-stack infisical.toml", "stack", stackName)
 configured = true
 } else if token := os.Getenv("INFISICAL_TOKEN"); token != "" {
 args = append(args, "--token="+token)
@@ -262,10 +274,10 @@ if infisicalEnv == "" {
 infisicalEnv = "prod"
 }
 args = append(args, "--env="+infisicalEnv)
-log.Printf("Stack %s: using global INFISICAL_TOKEN (env: %s)", stackName, infisicalEnv)
+slog.Info("stack using global infisical token", "stack", stackName, "env", infisicalEnv)
 configured = true
 } else {
-log.Printf("Warning: INFISICAL_ENABLED=true but no infisical.toml or INFISICAL_TOKEN found for stack %s, applying without secrets injection", stackName)
+slog.Warn("INFISICAL_ENABLED=true but no credentials found, applying without secrets injection", "stack", stackName)
 }
 
 if configured {
@@ -290,10 +302,10 @@ if *dockerClientPtr == nil {
 reconnCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 defer cancel()
 if c, err := docker.New(); err == nil {
-log.Printf("Docker client reconnected successfully")
+slog.Info("docker client reconnected")
 *dockerClientPtr = c
 } else {
-log.Printf("Docker reconnection failed: %v", err)
+slog.Warn("docker reconnection failed", "err", err)
 _ = reconnCtx
 return
 }
@@ -306,7 +318,7 @@ refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 ctrs, err := (*dockerClientPtr).ListStackContainerDetails(refreshCtx, st.StackDir)
 cancel()
 if err != nil {
-log.Printf("refreshContainers %s/%s: %v", st.RepoName, st.Name, err)
+slog.Warn("refreshContainers failed", "repo", st.RepoName, "stack", st.Name, "err", err)
 ctrs = nil
 }
 containers := make([]state.ContainerDetail, 0, len(ctrs))
@@ -320,7 +332,14 @@ StartedAt: dc.StartedAt,
 })
 }
 store.UpdateStackContainers(st.RepoName, st.Name, containers)
-}
+		running := int64(0)
+		for _, c := range containers {
+			if c.Status == "running" {
+				running++
+			}
+		}
+		metrics.SetContainersRunning(st.RepoName+"/"+st.Name, running)
+	}
 }
 
 func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client) {
@@ -341,7 +360,7 @@ cmd.Dir = stackPath
 output, err := cmd.CombinedOutput()
 outputStr := string(output)
 if len(output) > 0 {
-log.Printf("Stack %s output:\n%s", stackName, outputStr)
+slog.Info("stack compose output", "stack", stackName, "output", outputStr)
 }
 
 if store != nil {
@@ -363,7 +382,7 @@ ctrCtx, ctrCancel := context.WithTimeout(ctx, 30*time.Second)
 ctrs, dErr := dockerClient.ListStackContainerDetails(ctrCtx, stackPath)
 ctrCancel()
 if dErr != nil {
-log.Printf("Stack %s: container lookup failed: %v", stackName, dErr)
+slog.Warn("container lookup failed", "stack", stackName, "err", dErr)
 } else {
 for _, dc := range ctrs {
 st.Containers = append(st.Containers, state.ContainerDetail{
@@ -378,12 +397,17 @@ StartedAt: dc.StartedAt,
 }
 }
 store.UpdateStack(st)
+	if err != nil {
+		metrics.RecordApply(stackName, "error")
+	} else {
+		metrics.RecordApply(stackName, "success")
+	}
 }
 
 if err != nil {
-log.Printf("Stack %s failed: %v", stackName, err)
+slog.Error("stack apply failed", "stack", stackName, "err", err)
 } else {
-log.Printf("Stack %s applied successfully", stackName)
+slog.Info("stack applied successfully", "stack", stackName)
 }
 }
 
@@ -437,11 +461,11 @@ return result
 
 var cfg yamlAppConfig
 if err := yaml.Unmarshal(data, &cfg); err != nil {
-log.Printf("Warning: failed to parse %s: %v", configPath, err)
+slog.Warn("failed to parse config", "path", configPath, "err", err)
 return result
 }
 
-log.Printf("Loaded config from %s (%d repos)", configPath, len(cfg.Repos))
+slog.Info("loaded config", "path", configPath, "repos", len(cfg.Repos))
 for _, r := range cfg.Repos {
 result[r.Name] = r
 }
@@ -520,7 +544,7 @@ return
 
 entries, err := os.ReadDir(cfg.StacksDir)
 if err != nil {
-log.Printf("Failed to read stacks dir %s: %v", cfg.StacksDir, err)
+slog.Error("failed to read stacks dir", "repo", cfg.Name, "dir", cfg.StacksDir, "err", err)
 return
 }
 
@@ -542,7 +566,7 @@ break
 }
 
 if composePath == "" {
-log.Printf("Stack %s: no compose.yaml or docker-compose.yml found, skipping", stackName)
+slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", cfg.Name)
 continue
 }
 
@@ -555,25 +579,26 @@ if cfg.PostSyncCmd == "" {
 return
 }
 
-log.Printf("Running post-sync command for %s: %s", cfg.Name, cfg.PostSyncCmd)
+slog.Info("running post-sync command", "repo", cfg.Name, "cmd", cfg.PostSyncCmd)
 postCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 defer cancel()
 cmd := exec.CommandContext(postCtx, "sh", "-c", cfg.PostSyncCmd)
 cmd.Dir = cfg.Dir
 output, err := cmd.CombinedOutput()
 if len(output) > 0 {
-log.Printf("Post-sync output for %s:\n%s", cfg.Name, string(output))
+slog.Info("post-sync output", "repo", cfg.Name, "output", string(output))
 }
 if err != nil {
-log.Printf("Post-sync command failed for %s: %v", cfg.Name, err)
+slog.Error("post-sync command failed", "repo", cfg.Name, "err", err)
 } else {
-log.Printf("Post-sync command completed successfully for %s", cfg.Name)
+slog.Info("post-sync command completed", "repo", cfg.Name)
 }
 }
 
 func syncRepo(ctx context.Context, cfg RepoConfig, appCfg AppConfig, store *state.Store, dockerClient *docker.Client) {
 repoName := cfg.Name
 pullOnly := cfg.PullOnly || appCfg.PullOnly
+start := time.Now()
 
 if store != nil {
 existing, ok := store.GetRepo(repoName)
@@ -585,7 +610,7 @@ store.UpdateRepo(existing)
 }
 
 recordError := func(msg string) {
-log.Print(msg)
+slog.Error("sync error", "repo", repoName, "detail", msg)
 if store != nil {
 existing, _ := store.GetRepo(repoName)
 existing.Name = repoName
@@ -594,6 +619,7 @@ existing.LastError = msg
 store.UpdateRepo(existing)
 }
 recordSyncFailure(repoName, appCfg.SyncInterval)
+	metrics.RecordSync(cfg.Name, "error", time.Since(start))
 }
 
 // Ensure only one sync runs per repo at a time.
@@ -606,7 +632,7 @@ defer repoMu.Unlock()
 safeCtx, safeCancel := context.WithTimeout(ctx, 10*time.Second)
 configCmd := exec.CommandContext(safeCtx, "git", "config", "--system", "--add", "safe.directory", "*")
 if err := configCmd.Run(); err != nil {
-log.Printf("Failed to mark directories as safe: %v", err)
+slog.Warn("failed to mark directories as safe", "err", err)
 }
 safeCancel()
 
@@ -643,7 +669,7 @@ return
 currentSHA := strings.TrimSpace(string(localSHA))
 
 if string(localSHA) != string(remoteSHA) {
-log.Printf("Remote changes detected in %s. Pulling changes...", cfg.Dir)
+slog.Info("remote changes detected, pulling", "repo", repoName, "branch", cfg.Branch, "remote", cfg.Remote)
 pullCtx, pullCancel := context.WithTimeout(ctx, 120*time.Second)
 pullCmd := exec.CommandContext(pullCtx, "git", "pull", cfg.Remote, cfg.Branch)
 pullCmd.Dir = cfg.Dir
@@ -664,7 +690,7 @@ runStacksSync(ctx, cfg, store, dockerClient)
 }
 
 if pullOnly {
-log.Printf("Pull-only mode: skipping add/commit/push for %s", cfg.Dir)
+slog.Info("pull-only mode: skipping add/commit/push", "repo", repoName)
 if store != nil {
 store.UpdateRepo(state.RepoState{
 Name:     repoName,
@@ -674,6 +700,7 @@ Status:   state.StatusOK,
 })
 }
 recordSyncSuccess(repoName)
+	metrics.RecordSync(cfg.Name, "success", time.Since(start))
 return
 }
 
@@ -692,7 +719,7 @@ return
 
 loc, err := time.LoadLocation(os.Getenv("TZ"))
 if err != nil {
-log.Printf("Failed to load location: %v", err)
+slog.Warn("failed to load timezone", "err", err)
 loc = time.UTC
 }
 commitCtx, commitCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -701,7 +728,7 @@ cmd.Dir = cfg.Dir
 output, err = cmd.CombinedOutput()
 commitCancel()
 if err != nil {
-log.Printf("No changes to commit in %s: %v. Output: %s", cfg.Dir, err, string(output))
+slog.Info("no changes to commit", "repo", repoName, "err", err)
 // Not a hard error — nothing to commit is normal.
 if store != nil {
 store.UpdateRepo(state.RepoState{
@@ -712,6 +739,7 @@ Status:   state.StatusOK,
 })
 }
 recordSyncSuccess(repoName)
+	metrics.RecordSync(cfg.Name, "success", time.Since(start))
 return
 }
 
@@ -732,7 +760,7 @@ recordError(fmt.Sprintf("Failed to push in %s: %v. Output: %s", cfg.Dir, err, st
 return
 }
 
-log.Printf("Successfully synced %s", cfg.Dir)
+slog.Info("successfully synced repo", "repo", repoName)
 if store != nil {
 store.UpdateRepo(state.RepoState{
 Name:     repoName,
@@ -742,21 +770,44 @@ Status:   state.StatusOK,
 })
 }
 recordSyncSuccess(repoName)
+metrics.RecordSync(cfg.Name, "success", time.Since(start))
 }
 
 func main() {
+	// Configure structured logger
+	logLevel := new(slog.LevelVar)
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		logLevel.Set(slog.LevelDebug)
+	case "warn":
+		logLevel.Set(slog.LevelWarn)
+	case "error":
+		logLevel.Set(slog.LevelError)
+	default:
+		logLevel.Set(slog.LevelInfo)
+	}
+
+	var handler slog.Handler
+	if strings.ToLower(os.Getenv("LOG_FORMAT")) == "text" {
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	} else {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	}
+	slog.SetDefault(slog.New(handler))
+
 err := setupSSH()
 if err != nil {
-log.Fatalf("SSH setup failed: %v", err)
+slog.Error("SSH setup failed", "err", err)
+	os.Exit(1)
 }
 
 appCfg := loadAppConfig()
 
 if appCfg.PullOnly {
-log.Println("Pull-only mode enabled: skipping git add, commit, and push")
+slog.Info("pull-only mode enabled: skipping git add, commit, and push")
 }
 
-log.Printf("Sync interval: %d seconds", appCfg.SyncIntervalSeconds)
+slog.Info("sync interval", "seconds", appCfg.SyncIntervalSeconds)
 
 // --- State store ---
 store := state.New()
@@ -774,7 +825,7 @@ var dockerClient *docker.Client
 if c, err := docker.New(); err == nil {
 dockerClient = c
 } else {
-log.Printf("Warning: Docker client unavailable (%v) — container details and log streaming disabled", err)
+slog.Warn("docker client unavailable, container details and log streaming disabled", "err", err)
 }
 
 ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -802,7 +853,7 @@ if portStr := os.Getenv("DASHBOARD_PORT"); portStr != "" {
 if v, err := strconv.Atoi(portStr); err == nil && v > 0 {
 dashPort = v
 } else {
-log.Printf("Invalid DASHBOARD_PORT value %q, using default 8080", portStr)
+slog.Warn("invalid DASHBOARD_PORT value, using default 8080", "value", portStr)
 }
 }
 
@@ -823,7 +874,7 @@ if ctx.Err() != nil {
 return // shutdown in progress, stop starting new syncs
 }
 if shouldSkipSync(cfg.Name) {
-log.Printf("Skipping sync for %q (backoff)", cfg.Name)
+slog.Info("skipping sync (backoff)", "repo", cfg.Name)
 continue
 }
 syncRepo(ctx, cfg, appCfg, store, dockerClient)
@@ -836,7 +887,8 @@ wg.Wait() // keep sequential behaviour; WaitGroup lets shutdown detect completio
 for {
 repoCfgs, err := loadRepoConfigs(appCfg)
 if err != nil {
-log.Fatalf("Failed to get mounted volumes: %v", err)
+slog.Error("failed to get mounted volumes", "err", err)
+		os.Exit(1)
 }
 
 doSyncRound(repoCfgs)
@@ -844,15 +896,15 @@ doSyncRound(repoCfgs)
 // Wait for the next tick or a manual sync trigger.
 select {
 case <-ctx.Done():
-log.Printf("Shutdown signal received, waiting for in-flight operations to complete...")
+slog.Info("shutdown signal received, waiting for in-flight operations to complete")
 ticker.Stop()
 waitDone := make(chan struct{})
 go func() { wg.Wait(); close(waitDone) }()
 select {
 case <-waitDone:
-log.Printf("All operations completed, shutting down cleanly")
+slog.Info("all operations completed, shutting down cleanly")
 case <-time.After(30 * time.Second):
-log.Printf("Shutdown timeout reached, forcing exit")
+slog.Warn("shutdown timeout reached, forcing exit")
 }
 return
 
@@ -869,7 +921,7 @@ default:
 break drainLoop
 }
 }
-log.Printf("Manual sync triggered for %q", repoName)
+slog.Info("manual sync triggered", "repo", repoName)
 resetBackoff(repoName) // manual sync always resets backoff
 for _, cfg := range repoCfgs {
 if cfg.Name == repoName {

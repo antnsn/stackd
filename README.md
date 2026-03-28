@@ -80,6 +80,8 @@ The dashboard gives you a live view of everything stackd manages:
 | `BRANCH_<REPO>` | `BRANCH_DEFAULT` | Git branch for a specific repo (e.g. `BRANCH_HOMELAB=master`) |
 | `REMOTE_<REPO>` | `origin` | Git remote for a specific repo (e.g. `REMOTE_HOMELAB=upstream`) |
 | `STACKD_CONFIG` | _(none)_ | Path to optional `stackd.yaml` config file |
+| `LOG_FORMAT` | `json` | Log output format: `json` or `text` |
+| `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 
 ### Stacks Layout
 
@@ -226,6 +228,18 @@ Run a command after a successful pull, before stack applies:
 environment:
   - POST_SYNC_DOCKERS=docker compose -f /repos/dockers/extra/compose.yaml up -d
 ```
+
+## Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Dashboard UI |
+| `GET /api/status` | JSON state snapshot |
+| `POST /api/sync/{repo}` | Trigger immediate sync |
+| `GET /api/logs/{container}` | SSE container log stream |
+| `GET /healthz` | Liveness probe — always `200 OK` |
+| `GET /readyz` | Readiness probe — `200` when ready, `503` otherwise |
+| `GET /metrics` | Prometheus metrics |
 
 ## Logging
 
