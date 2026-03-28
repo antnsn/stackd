@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"stackd/internal/docker"
+	"stackd/internal/metrics"
 	"stackd/internal/state"
 	"stackd/internal/ui"
 )
@@ -69,13 +70,13 @@ func (s *Server) Start(ctx context.Context) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Dashboard server shutdown error: %v", err)
+			slog.Error("dashboard server shutdown error", "err", err)
 		}
 	}()
 
-	log.Printf("Dashboard listening on %s", s.addr)
+	slog.Info("dashboard listening", "addr", s.addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Printf("Dashboard server error: %v", err)
+		slog.Error("dashboard server error", "err", err)
 	}
 }
 
@@ -92,7 +93,7 @@ func (s *Server) registerRoutes() {
 	staticFS, err := fs.Sub(ui.StaticFiles, "dist")
 	if err != nil {
 		// Should never happen given the embed directive.
-		log.Printf("Warning: could not sub static FS: %v", err)
+		slog.Warn("could not sub static FS", "err", err)
 	}
 
 	// GET /assets/ — serve hashed JS/CSS bundles produced by Vite.
@@ -125,6 +126,40 @@ func (s *Server) registerRoutes() {
 
 	// GET /api/logs/{container} — SSE stream of Docker logs
 	s.mux.HandleFunc("GET /api/logs/{container}", s.handleLogs)
+
+	// GET /healthz — liveness probe (always 200)
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	// GET /readyz — readiness probe
+	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		dockerOK := s.docker != nil
+		synced := false
+		for _, st := range s.store.GetAllStacks() {
+			if !st.LastApply.IsZero() {
+				synced = true
+				break
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if dockerOK && synced {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]any{
+				"status": "not_ready",
+				"docker": dockerOK,
+				"synced": synced,
+			})
+		}
+	})
+
+	// GET /metrics — Prometheus metrics (no auth required)
+	s.mux.HandleFunc("GET /metrics", metrics.Handler)
 }
 
 // repoView is the per-repo shape returned by /api/status.
@@ -177,7 +212,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("status encode error: %v", err)
+		slog.Error("status encode error", "err", err)
 	}
 }
 
