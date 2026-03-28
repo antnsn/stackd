@@ -184,7 +184,29 @@ func formatPorts(portMap nat.PortMap) []string {
 	return ports
 }
 
-// ListStackContainers returns the names of all containers belonging to the
+// StartContainer starts a stopped container by name.
+func (c *Client) StartContainer(ctx context.Context, name string) error {
+	if err := c.cli.ContainerStart(ctx, name, dockertypes.StartOptions{}); err != nil {
+		return fmt.Errorf("StartContainer %s: %w", name, err)
+	}
+	return nil
+}
+
+// StopContainer stops a running container by name.
+func (c *Client) StopContainer(ctx context.Context, name string) error {
+	if err := c.cli.ContainerStop(ctx, name, dockertypes.StopOptions{}); err != nil {
+		return fmt.Errorf("StopContainer %s: %w", name, err)
+	}
+	return nil
+}
+
+// RestartContainer restarts a container by name.
+func (c *Client) RestartContainer(ctx context.Context, name string) error {
+	if err := c.cli.ContainerRestart(ctx, name, dockertypes.StopOptions{}); err != nil {
+		return fmt.Errorf("RestartContainer %s: %w", name, err)
+	}
+	return nil
+}
 // compose project whose directory is stackDir (matched by project label).
 func (c *Client) ListStackContainers(ctx context.Context, stackDir string) ([]string, error) {
 	// Compose derives the project name from the directory name, lowercased.

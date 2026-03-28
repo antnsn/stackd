@@ -29,6 +29,18 @@ export function App() {
     return () => clearInterval(interval)
   }, [])
 
+  // Keep selectedStack live — sync it from repos on every poll so container
+  // status reflects reality immediately after a start/stop/restart action.
+  useEffect(() => {
+    if (!selectedStack) return
+    for (const repo of repos) {
+      if (repo.name !== selectedStack.repoName) continue
+      const fresh = (repo.stacks || []).find(s => s.name === selectedStack.name)
+      if (fresh) setSelectedStack({ ...fresh, repoName: repo.name })
+      break
+    }
+  }, [repos])
+
   const clearSyncing = (repoName) => {
     setSyncingRepos(prev => {
       const s = new Set(prev)
@@ -96,6 +108,7 @@ export function App() {
             <AppDetail
               stack={selectedStack}
               onClose={() => setSelectedStack(null)}
+              onRefresh={fetchStatus}
             />
           </div>
         )}
