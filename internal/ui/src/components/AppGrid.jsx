@@ -63,6 +63,7 @@ export function AppGrid({ repos, selectedStack, syncingRepos, syncStatus, onSele
         <label for="stack-sort" class="sort-label">Sort</label>
         <select
           id="stack-sort"
+          name="stack-sort"
           class="sort-select"
           value={sortOrder}
           onChange={handleSortChange}
@@ -125,7 +126,7 @@ function RepoGroup({ repo, sortOrder, selectedStack, isSyncing, repoSyncStatus, 
             title={isSyncing ? 'Syncing…' : 'Force sync'}
             disabled={isSyncing}
           >
-            ↻
+            <span aria-hidden="true">↻</span>
           </button>
         </div>
       </div>

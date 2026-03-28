@@ -47,6 +47,7 @@
   font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
+  text-wrap: balance;
 }
 
 /* P0-3 fix: aria-label="Close" added in JSX         */

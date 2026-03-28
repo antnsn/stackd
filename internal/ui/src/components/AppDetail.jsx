@@ -164,7 +164,7 @@ function LogStream({ containerName }) {
       {streamEnded && (
         <div class="stream-banner" role="status" aria-live="assertive">
           <span>Stream ended</span>
-          <button class="stream-reconnect" onClick={startStream}>↻ Reconnect</button>
+          <button class="stream-reconnect" onClick={startStream}><span aria-hidden="true">↻</span> Reconnect</button>
         </div>
       )}
       <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>

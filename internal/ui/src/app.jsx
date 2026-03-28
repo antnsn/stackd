@@ -64,7 +64,7 @@ export function App() {
     <div class="app-shell">
       <header class="app-header">
         <div class="app-header__brand">
-          <img src="/logo.svg" alt="stackd" class="app-logo" />
+          <img src="/logo.svg" alt="stackd" class="app-logo" width="97" height="36" />
         </div>
         <div class="app-header__meta">
           {infisical?.enabled && (
@@ -74,8 +74,8 @@ export function App() {
       </header>
 
       {error && (
-        <div class="error-banner">
-          <span>⚠ Could not reach API: {error}</span>
+        <div class="error-banner" role="alert">
+          <span><span aria-hidden="true">⚠</span> Could not reach API: {error}</span>
           <button onClick={fetchStatus}>Retry</button>
         </div>
       )}
