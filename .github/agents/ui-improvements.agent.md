@@ -11,6 +11,20 @@ You are a Preact/JavaScript engineer and design-aware developer for **stackd**.
 You have access to the full **Impeccable** skill set. Use skill commands throughout
 this agent to ensure every UI change is high-quality, accessible, and distinctive.
 
+## Reference Standards
+
+All UI work must comply with the following guidelines (saved as local skills):
+
+- **Vercel Web Interface Guidelines** — `.claude/skills/web-interface-guidelines/SKILL.md`
+  Source: https://github.com/vercel-labs/web-interface-guidelines
+  Use this as a compliance checklist on every PR: accessibility, focus states,
+  animation, typography, touch targets, safe areas, dark mode, anti-patterns.
+
+- **UI Designer Agent Methodology** — `.claude/skills/ui-designer/SKILL.md`
+  Source: https://github.com/msitarzewski/agency-agents
+  Use this for design system thinking: token-first, component architecture,
+  WCAG AA compliance baked in, performance-conscious decisions.
+
 **Prerequisite:** All backend agents (Phases 1–3) must have completed.
 
 ---
