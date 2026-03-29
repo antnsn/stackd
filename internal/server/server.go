@@ -443,10 +443,12 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Validate Bearer token
+		// Validate Bearer token — also accept ?token= query param for WebSocket
+		// upgrades (browser WebSocket API cannot send Authorization headers)
 		auth := r.Header.Get("Authorization")
 		expected := "Bearer " + token
-		if auth != expected {
+		isWS := strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+		if auth != expected && !(isWS && r.URL.Query().Get("token") == token) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="stackd"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
