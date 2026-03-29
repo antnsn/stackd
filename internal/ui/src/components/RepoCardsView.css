@@ -7,36 +7,33 @@
   background: var(--bg-primary);
 }
 
-/* ── Header ──────────────────────────────────────── */
-.repo-cards-header {
+/* ── Unified topbar (title + search + sort + sync) ── */
+.repo-cards-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-6);
-  border-bottom: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  flex-shrink: 0;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 60%
-  );
   gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .repo-cards-title {
   font-family: var(--font-ui);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-right: var(--space-1);
 }
 
-.repo-cards-header__right {
+.repo-cards-topbar__actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .repo-sync-msg {
@@ -88,17 +85,7 @@
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Toolbar (search + sort) ─────────────────────── */
-.repo-cards-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-  background: var(--bg-secondary);
-}
-
+/* ── Search ──────────────────────────────────────── */
 .repo-search {
   display: flex;
   align-items: center;

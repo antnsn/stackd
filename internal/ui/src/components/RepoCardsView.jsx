@@ -37,9 +37,43 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
 
   return (
     <div class="repo-cards-view">
-      <div class="repo-cards-header">
+      <div class="repo-cards-topbar">
         <span class="repo-cards-title">{repo.name}</span>
-        <div class="repo-cards-header__right">
+
+        <div class="repo-search">
+          <span class="repo-search__icon" aria-hidden="true">⌕</span>
+          <input
+            class="repo-search__input"
+            type="search"
+            placeholder="Search stacks…"
+            value={search}
+            onInput={e => setSearch(e.target.value)}
+            aria-label="Search stacks"
+          />
+          {search && (
+            <button class="repo-search__clear" onClick={() => setSearch('')} aria-label="Clear search">×</button>
+          )}
+        </div>
+
+        <div class="repo-sort">
+          <label class="sort-label" for="cards-sort">Sort</label>
+          <select
+            id="cards-sort"
+            class="sort-select"
+            value={sort}
+            onChange={e => setSort(e.target.value)}
+          >
+            {SORT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {search && (
+          <span class="repo-filter-count">{filtered.length} of {stacks.length}</span>
+        )}
+
+        <div class="repo-cards-topbar__actions">
           {syncStatus?.message && (
             <span class={`repo-sync-msg repo-sync-msg--${syncStatus.state}`}>
               {syncStatus.message}
@@ -55,39 +89,6 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
             {isSyncing ? 'Syncing…' : 'Sync'}
           </button>
         </div>
-      </div>
-
-      <div class="repo-cards-toolbar">
-        <div class="repo-search">
-          <span class="repo-search__icon" aria-hidden="true">⌕</span>
-          <input
-            class="repo-search__input"
-            type="search"
-            placeholder="Search stacks…"
-            value={search}
-            onInput={e => setSearch(e.target.value)}
-            aria-label="Search stacks"
-          />
-          {search && (
-            <button class="repo-search__clear" onClick={() => setSearch('')} aria-label="Clear search">×</button>
-          )}
-        </div>
-        <div class="repo-sort">
-          <label class="sort-label" for="cards-sort">Sort</label>
-          <select
-            id="cards-sort"
-            class="sort-select"
-            value={sort}
-            onChange={e => setSort(e.target.value)}
-          >
-            {SORT_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-        {search && (
-          <span class="repo-filter-count">{filtered.length} of {stacks.length}</span>
-        )}
       </div>
 
       {filtered.length === 0 ? (
