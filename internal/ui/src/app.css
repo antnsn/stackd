@@ -22,10 +22,6 @@
   padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   flex-shrink: 0;
-  background: linear-gradient(160deg,
-    color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 100%
-  );
 }
 
 .app-logo {
@@ -212,7 +208,7 @@
 
 .repo-nav__sync-age {
   font-family: var(--font-mono);
-  font-size: 1.0rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
   letter-spacing: var(--tracking-wide);

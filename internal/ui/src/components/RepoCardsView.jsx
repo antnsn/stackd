@@ -191,7 +191,6 @@ function StackCard({ stack, onSelect, index }) {
       style={{ '--card-i': Math.min(index, 8) }}
     >
       <div class="stack-card-main__header">
-        <span class="stack-card-main__dot" aria-hidden="true" />
         <span class="stack-card-main__name">{stack.name}</span>
         <span class="stack-card-main__badge">{status}</span>
       </div>
