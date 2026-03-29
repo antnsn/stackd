@@ -181,12 +181,16 @@ export function App() {
           </button>
           <div class="sidebar-meta">
             {freshnessLabel && (
-              <span class="freshness-label" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
-                {freshnessLabel}
-              </span>
+              <div class="sidebar-meta__row" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
+                <span class="sidebar-meta__label">Updated</span>
+                <span class="freshness-label">{freshnessLabel}</span>
+              </div>
             )}
             {infisical?.enabled && (
-              <span class="infisical-badge">Infisical · {infisical.env}</span>
+              <div class="sidebar-meta__row">
+                <span class="sidebar-meta__label">Secrets</span>
+                <span class="infisical-badge">Infisical · {infisical.env}</span>
+              </div>
             )}
           </div>
         </div>
