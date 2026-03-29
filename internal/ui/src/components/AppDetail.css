@@ -598,7 +598,7 @@
 
 .info-value {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--text-primary);
   word-break: break-all;
 }
@@ -770,7 +770,7 @@
 .compose-error {
   padding: 12px 16px;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -781,10 +781,10 @@
 /* ── Info section divider ────────────────────────── */
 .info-section-divider {
   font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: var(--tracking-wider);
   color: var(--text-secondary);
   padding: 10px 20px 4px;
   border-top: 1px solid var(--border-color);
@@ -796,7 +796,7 @@
   margin: 0;
   padding: 10px 16px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
