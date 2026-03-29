@@ -568,6 +568,23 @@
     display: none;
   }
 
+  /* Compact header chrome to maximise content area */
+  .detail-header {
+    padding: 10px 16px 8px;
+  }
+
+  .stack-meta-grid {
+    padding-bottom: 0;
+  }
+
+  .meta-item {
+    padding: 6px 16px;
+  }
+
+  .container-actions {
+    padding: 6px 12px;
+  }
+
   .mobile-close-bar {
     display: flex;
     flex-shrink: 0;
