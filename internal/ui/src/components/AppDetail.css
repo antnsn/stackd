@@ -950,3 +950,22 @@
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* ── Terminal panel (Shell tab) ──────────────────── */
+.tab-panel--shell {
+  padding: 0;
+  overflow: hidden;
+  background: #0d1117;
+}
+
+.terminal-panel {
+  width: 100%;
+  height: 100%;
+  padding: var(--space-2);
+  box-sizing: border-box;
+}
+
+/* xterm overrides — fit to our palette */
+.terminal-panel .xterm-viewport {
+  background: #0d1117 !important;
+}

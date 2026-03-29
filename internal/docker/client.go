@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dockertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -206,6 +207,53 @@ func (c *Client) RestartContainer(ctx context.Context, name string) error {
 		return fmt.Errorf("RestartContainer %s: %w", name, err)
 	}
 	return nil
+}
+
+// ExecResult holds the exec ID and attached streams for an interactive exec session.
+type ExecResult struct {
+	ExecID string
+	types.HijackedResponse
+}
+
+// ExecInteractive creates a PTY exec session in the container, trying /bin/bash
+// then falling back to /bin/sh. Returns the exec ID and attached hijacked conn.
+func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*ExecResult, error) {
+	shell := "/bin/bash"
+	exec, err := c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
+		Cmd:          []string{shell},
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          true,
+	})
+	if err != nil || exec.ID == "" {
+		// fallback to sh
+		shell = "/bin/sh"
+		exec, err = c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
+			Cmd:          []string{shell},
+			AttachStdin:  true,
+			AttachStdout: true,
+			AttachStderr: true,
+			Tty:          true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("exec create %s: %w", containerID, err)
+		}
+	}
+
+	resp, err := c.cli.ContainerExecAttach(ctx, exec.ID, dockertypes.ExecStartOptions{Tty: true})
+	if err != nil {
+		return nil, fmt.Errorf("exec attach %s: %w", containerID, err)
+	}
+	return &ExecResult{ExecID: exec.ID, HijackedResponse: resp}, nil
+}
+
+// ExecResize resizes the PTY for a running exec session.
+func (c *Client) ExecResize(ctx context.Context, execID string, height, width uint) error {
+	return c.cli.ContainerExecResize(ctx, execID, dockertypes.ResizeOptions{
+		Height: height,
+		Width:  width,
+	})
 }
 // compose project whose directory is stackDir (matched by project label).
 func (c *Client) ListStackContainers(ctx context.Context, stackDir string) ([]string, error) {

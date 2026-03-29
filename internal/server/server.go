@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"stackd/internal/docker"
 	"stackd/internal/metrics"
 	"stackd/internal/state"
@@ -132,6 +134,7 @@ func (s *Server) registerRoutes() {
 
 	// GET /api/logs/{container} — SSE stream of Docker logs
 	s.mux.HandleFunc("GET /api/logs/{container}", s.handleLogs)
+	s.mux.HandleFunc("GET /api/exec/{container}", s.handleExec)
 
 	// GET /api/stacks/{repo}/{stack}/compose — raw compose file content
 	s.mux.HandleFunc("GET /api/stacks/{repo}/{stack}/compose", s.handleComposeFile)
@@ -505,4 +508,95 @@ func (s *sseWriter) Write(p []byte) (int, error) {
 	}
 	s.flusher.Flush()
 	return len(p), nil
+}
+
+// ── WebSocket exec ────────────────────────────────────────────────────────────
+
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true }, // auth handled by middleware
+}
+
+// execResizeMsg is sent by the frontend to resize the PTY.
+type execResizeMsg struct {
+	Type string `json:"type"` // "resize"
+	Cols uint   `json:"cols"`
+	Rows uint   `json:"rows"`
+}
+
+// handleExec upgrades to WebSocket and bridges a docker exec PTY session.
+// GET /api/exec/{container}
+func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+	if s.docker == nil {
+		http.Error(w, "docker unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	containerID := r.PathValue("container")
+	if containerID == "" {
+		http.Error(w, "missing container", http.StatusBadRequest)
+		return
+	}
+
+	ws, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		slog.Warn("exec ws upgrade failed", "container", containerID, "err", err)
+		return
+	}
+	defer ws.Close()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel()
+
+	exec, err := s.docker.ExecInteractive(ctx, containerID)
+	if err != nil {
+		slog.Warn("exec create failed", "container", containerID, "err", err)
+		_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\nfailed to start shell: "+err.Error()+"\r\n"))
+		return
+	}
+	defer exec.Close()
+
+	slog.Info("exec session started", "container", containerID, "execID", exec.ExecID)
+
+	// Docker PTY → WebSocket
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := exec.Conn.Read(buf)
+			if n > 0 {
+				if werr := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+					return
+				}
+			}
+			if err != nil {
+				if err != io.EOF {
+					slog.Debug("exec read ended", "container", containerID, "err", err)
+				}
+				cancel()
+				return
+			}
+		}
+	}()
+
+	// WebSocket → Docker PTY (text = input, binary = input, JSON with type:resize = resize)
+	for {
+		msgType, data, err := ws.ReadMessage()
+		if err != nil {
+			break
+		}
+		if msgType == websocket.TextMessage || msgType == websocket.BinaryMessage {
+			// Check if it's a resize control message
+			var resize execResizeMsg
+			if len(data) > 0 && data[0] == '{' {
+				if jerr := json.Unmarshal(data, &resize); jerr == nil && resize.Type == "resize" {
+					_ = s.docker.ExecResize(ctx, exec.ExecID, resize.Rows, resize.Cols)
+					continue
+				}
+			}
+			if _, werr := exec.Conn.Write(data); werr != nil {
+				break
+			}
+		}
+	}
+
+	slog.Info("exec session ended", "container", containerID)
 }

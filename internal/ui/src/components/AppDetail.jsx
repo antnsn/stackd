@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
+import '@xterm/xterm/css/xterm.css'
 import './AppDetail.css'
 
 function classifyLog(text) {
@@ -230,7 +231,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
         {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
       </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['info', lastError ? <>Info <span aria-hidden="true">⚠</span></> : 'Info'], ['logs', 'Logs'], ['env', 'Env']].map(([t, label]) => (
+        {[['info', lastError ? <>Info <span aria-hidden="true">⚠</span></> : 'Info'], ['logs', 'Logs'], ['env', 'Env'], ['shell', 'Shell']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
@@ -245,6 +246,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
       {tab === 'logs'    && <div class="tab-panel" key="logs"><LogStream key={container.name} containerName={container.name} /></div>}
       {tab === 'env'     && <div class="tab-panel" key="env"><EnvVars envs={container.env} /></div>}
       {tab === 'info'    && <div class="tab-panel" key="info"><ContainerInfo container={container} lastOutput={lastOutput} lastError={lastError} repoName={repoName} stackName={stackName} /></div>}
+      {tab === 'shell'   && <div class="tab-panel tab-panel--shell" key="shell"><TerminalPanel containerID={container.id} /></div>}
     </div>
   )
 }
@@ -471,4 +473,98 @@ function ComposeViewer({ repoName, stackName, lastError }) {
       </div>
     </>
   )
+}
+
+// ── TerminalPanel ─────────────────────────────────────
+
+function TerminalPanel({ containerID }) {
+  const containerRef = useRef(null)
+  const termRef      = useRef(null)
+  const wsRef        = useRef(null)
+  const fitRef       = useRef(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    // Lazy-load xterm to avoid paying bundle cost until the Shell tab is opened
+    Promise.all([
+      import('@xterm/xterm'),
+      import('@xterm/addon-fit'),
+    ]).then(([{ Terminal }, { FitAddon }]) => {
+      const term = new Terminal({
+        cursorBlink: true,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+        fontSize: 13,
+        theme: {
+          background:  '#0d1117',
+          foreground:  '#e6edf3',
+          cursor:      '#6c63ff',
+          black:       '#0d1117',
+          brightBlack: '#484f58',
+          red:         '#f85149',
+          green:       '#3fb950',
+          yellow:      '#d29922',
+          blue:        '#58a6ff',
+          magenta:     '#bc8cff',
+          cyan:        '#39c5cf',
+          white:       '#b1bac4',
+          brightWhite: '#e6edf3',
+        },
+      })
+      const fit = new FitAddon()
+      term.loadAddon(fit)
+      term.open(containerRef.current)
+      fit.fit()
+      termRef.current = term
+      fitRef.current  = fit
+
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      const ws = new WebSocket(`${proto}://${window.location.host}/api/exec/${containerID}`)
+      ws.binaryType = 'arraybuffer'
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        // Send initial size
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      }
+
+      ws.onmessage = e => {
+        if (e.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(e.data))
+        } else {
+          term.write(e.data)
+        }
+      }
+
+      ws.onclose = () => term.write('\r\n\x1b[90m[session closed]\x1b[0m\r\n')
+      ws.onerror = () => term.write('\r\n\x1b[31m[connection error]\x1b[0m\r\n')
+
+      term.onData(data => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data)
+      })
+
+      // Send resize on terminal resize
+      const ro = new ResizeObserver(() => {
+        fit.fit()
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+        }
+      })
+      ro.observe(containerRef.current)
+
+      // Cleanup
+      return () => {
+        ro.disconnect()
+        ws.close()
+        term.dispose()
+      }
+    })
+
+    return () => {
+      wsRef.current?.close()
+      termRef.current?.dispose()
+    }
+  }, [containerID])
+
+  return <div ref={containerRef} class="terminal-panel" />
 }
