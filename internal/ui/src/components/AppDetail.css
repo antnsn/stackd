@@ -255,7 +255,7 @@
               color 0.15s var(--ease-out-quart),
               transform 0.1s var(--ease-out-quart);
   touch-action: manipulation;
-  min-height: 28px;
+  min-height: 36px;
 }
 
 .ctrl-btn:not(:disabled):active {
@@ -363,6 +363,9 @@
   padding: 1px 4px;
   border-radius: 2px;
   border-left: 2px solid transparent;
+}
+
+.log-line--new {
   animation: logSlide 0.12s var(--ease-out-quart) both;
 }
 
@@ -381,7 +384,7 @@
 }
 
 .log-text {
-  color: #adbac7;
+  color: var(--text-primary);
   word-break: break-all;
 }
 
@@ -663,7 +666,7 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  color: #adbac7;
+  color: var(--text-primary);
   background: var(--bg-secondary);
   white-space: pre;
   tab-size: 2;
@@ -706,7 +709,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
-  color: #adbac7;
+  color: var(--text-primary);
 }
 
 .info-output--error {

@@ -139,8 +139,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
             class={`ctrl-btn ctrl-btn--start ${activeAction === 'start' && loading ? 'ctrl-btn--loading' : ''}`}
             onClick={() => doAction('start')}
             disabled={loading || isRunning}
-            aria-label="Start container"
-            touch-action="manipulation"
+            aria-label={`Start ${container.name}`}
           >
             {activeAction === 'start' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '▶'} Start
           </button>
@@ -148,8 +147,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
             class={`ctrl-btn ctrl-btn--stop ${activeAction === 'stop' && loading ? 'ctrl-btn--loading' : ''}`}
             onClick={() => doAction('stop')}
             disabled={loading || isStopped}
-            aria-label="Stop container"
-            touch-action="manipulation"
+            aria-label={`Stop ${container.name}`}
           >
             {activeAction === 'stop' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '■'} Stop
           </button>
@@ -157,8 +155,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
             class={`ctrl-btn ctrl-btn--restart ${activeAction === 'restart' && loading ? 'ctrl-btn--loading' : ''}`}
             onClick={() => doAction('restart')}
             disabled={loading}
-            aria-label="Restart container"
-            touch-action="manipulation"
+            aria-label={`Restart ${container.name}`}
           >
             {activeAction === 'restart' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Restart
           </button>
@@ -193,6 +190,9 @@ function LogStream({ containerName }) {
   const [streamEnded, setStreamEnded] = useState(false)
   const esRef = useRef(null)
   const endRef = useRef(null)
+  const mountedRef = useRef(false)
+
+  useEffect(() => { mountedRef.current = true }, [])
 
   const startStream = () => {
     if (esRef.current) esRef.current.close()
@@ -200,7 +200,7 @@ function LogStream({ containerName }) {
     setStreamEnded(false)
     const es = new EventSource(`/api/logs/${containerName}`)
     es.onmessage = e => {
-      setLogs(prev => [...prev, { text: e.data, time: new Date() }].slice(-200))
+      setLogs(prev => [...prev, { id: Date.now() + Math.random(), text: e.data, time: new Date(), isNew: mountedRef.current }].slice(-200))
     }
     es.onerror = () => {
       es.close()
@@ -228,8 +228,8 @@ function LogStream({ containerName }) {
       )}
       <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
         {!logs.length && !streamEnded && <div class="logs-empty">Waiting for logs…</div>}
-        {logs.map((entry, i) => (
-          <div key={i} class={`log-line ${classifyLog(entry.text)}`}>
+        {logs.map((entry) => (
+          <div key={entry.id} class={`log-line ${classifyLog(entry.text)} ${entry.isNew ? 'log-line--new' : ''}`}>
             <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
             <span class="log-text">{entry.text}</span>
           </div>

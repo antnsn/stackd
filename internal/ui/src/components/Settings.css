@@ -262,7 +262,7 @@
   background: var(--accent);
   border: none;
   border-radius: var(--radius-md);
-  color: #fff;
+  color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;

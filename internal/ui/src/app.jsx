@@ -27,8 +27,22 @@ export function App() {
 
   useEffect(() => {
     fetchStatus()
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
+    let interval = setInterval(fetchStatus, 5000)
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval)
+      } else {
+        fetchStatus()
+        interval = setInterval(fetchStatus, 5000)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   // Keep selectedStack live — sync it from repos on every poll so container
