@@ -211,7 +211,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
         {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
       </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['logs', 'Logs'], ['env', 'Env'], ['info', lastError ? <>Info <span aria-hidden="true">⚠</span></> : 'Info']].map(([t, label]) => (
+        {[['info', lastError ? <>Info <span aria-hidden="true">⚠</span></> : 'Info'], ['logs', 'Logs'], ['env', 'Env']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
