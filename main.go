@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -118,7 +119,33 @@ func redactSecretEnv(key, value string) string {
 	return value
 }
 
-// applyStack runs "docker compose up -d" for a single stack directory.
+// ansiEscape strips ANSI colour/control escape sequences from s.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[mGKHF]`)
+
+// extractErrorSummary returns the last meaningful lines from command output
+// when a process exits non-zero, so callers see something useful rather than
+// just "exit status 1".
+func extractErrorSummary(output string, fallback string) string {
+	clean := ansiEscape.ReplaceAllString(output, "")
+	var lines []string
+	for _, l := range strings.Split(clean, "\n") {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		return fallback
+	}
+	// Return the last 5 meaningful lines — usually where errors appear.
+	const maxLines = 5
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+
 //
 // Infisical secrets injection is applied when INFISICAL_ENABLED=true.
 // Auth priority:
@@ -264,7 +291,7 @@ Containers: []state.ContainerDetail{},
 }
 if err != nil {
 st.Status = state.ApplyError
-st.LastError = err.Error()
+st.LastError = extractErrorSummary(outputStr, err.Error())
 } else {
 st.Status = state.ApplyOK
 if dockerClient != nil {

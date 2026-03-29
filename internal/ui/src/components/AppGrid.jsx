@@ -187,7 +187,7 @@ function StackCard({ stack, isSelected, onSelect }) {
         )}
       </div>
       {stack.lastError && (
-        <div class="stack-error">{stack.lastError}</div>
+        <div class="stack-error" title={stack.lastError}>{stack.lastError.split('\n')[0]}</div>
       )}
     </button>
   )

@@ -98,6 +98,21 @@
   background: rgba(248, 81, 73, 0.05);
 }
 
+.meta-value--error-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--status-stopped);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(248, 81, 73, 0.07);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--status-stopped);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .meta-label {
   font-family: var(--font-ui);
   font-size: 10px;

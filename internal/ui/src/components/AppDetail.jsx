@@ -61,7 +61,7 @@ export function AppDetail({ stack, onClose, onRefresh }) {
         {stack.lastError && (
           <div class="meta-item meta-item--error">
             <span class="meta-label">Error</span>
-            <span class="meta-value">{stack.lastError}</span>
+            <pre class="meta-value meta-value--error-detail">{stack.lastError}</pre>
           </div>
         )}
       </div>
