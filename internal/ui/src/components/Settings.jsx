@@ -348,7 +348,6 @@ function GeneralTab() {
           infisicalUrl: data.infisicalUrl || '',
           gitUserName: data.gitUserName || '',
           gitUserEmail: data.gitUserEmail || '',
-          pullOnly: data.pullOnly || false,
         })
       })
       .catch(e => setError(e.message))
@@ -365,7 +364,6 @@ function GeneralTab() {
       infisicalUrl: form.infisicalUrl,
       gitUserName: form.gitUserName,
       gitUserEmail: form.gitUserEmail,
-      pullOnly: form.pullOnly,
     }
     if (form.infisicalToken) body.infisicalToken = form.infisicalToken
     try {
@@ -438,10 +436,6 @@ function GeneralTab() {
           <label class="form-label">
             Commit author email
             <input class="form-input" value={form.gitUserEmail} onInput={e => set('gitUserEmail', e.target.value)} />
-          </label>
-          <label class="form-label form-checkbox-row">
-            <input type="checkbox" checked={form.pullOnly} onChange={e => set('pullOnly', e.target.checked)} />
-            Pull-only mode — disable push back to origin
           </label>
         </div>
       </div>

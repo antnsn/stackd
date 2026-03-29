@@ -297,23 +297,21 @@ jsonOK(w, map[string]bool{"ok": true})
 // ---- General Settings -----------------------------------------------------
 
 type generalSettingsResponse struct {
-InfisicalTokenSet  bool   `json:"infisicalTokenSet"`
-InfisicalProjectID string `json:"infisicalProjectId"`
-InfisicalEnv       string `json:"infisicalEnv"`
-InfisicalURL       string `json:"infisicalUrl"`
-GitUserName        string `json:"gitUserName"`
-GitUserEmail       string `json:"gitUserEmail"`
-PullOnly           bool   `json:"pullOnly"`
+InfisicalTokenSet   bool   `json:"infisicalTokenSet"`
+InfisicalProjectID  string `json:"infisicalProjectId"`
+InfisicalEnv        string `json:"infisicalEnv"`
+InfisicalURL        string `json:"infisicalUrl"`
+GitUserName         string `json:"gitUserName"`
+GitUserEmail        string `json:"gitUserEmail"`
 }
 
 type generalSettingsRequest struct {
-InfisicalToken     *string `json:"infisicalToken"`
-InfisicalProjectID *string `json:"infisicalProjectId"`
-InfisicalEnv       *string `json:"infisicalEnv"`
-InfisicalURL       *string `json:"infisicalUrl"`
-GitUserName        *string `json:"gitUserName"`
-GitUserEmail       *string `json:"gitUserEmail"`
-PullOnly           *bool   `json:"pullOnly"`
+InfisicalToken      *string `json:"infisicalToken"`
+InfisicalProjectID  *string `json:"infisicalProjectId"`
+InfisicalEnv        *string `json:"infisicalEnv"`
+InfisicalURL        *string `json:"infisicalUrl"`
+GitUserName         *string `json:"gitUserName"`
+GitUserEmail        *string `json:"gitUserEmail"`
 }
 
 func (s *Server) handleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
@@ -330,7 +328,6 @@ InfisicalEnv:       settings["infisical_env"],
 InfisicalURL:       settings["infisical_url"],
 GitUserName:        settings["git_user_name"],
 GitUserEmail:       settings["git_user_email"],
-PullOnly:           settings["pull_only"] == "true",
 })
 }
 
@@ -364,13 +361,6 @@ updates = append(updates, kv{"git_user_name", *req.GitUserName})
 }
 if req.GitUserEmail != nil {
 updates = append(updates, kv{"git_user_email", *req.GitUserEmail})
-}
-if req.PullOnly != nil {
-v := "false"
-if *req.PullOnly {
-v = "true"
-}
-updates = append(updates, kv{"pull_only", v})
 }
 for _, u := range updates {
 if err := db.SetSetting(r.Context(), s.db, u.key, u.value); err != nil {

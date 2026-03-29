@@ -34,6 +34,5 @@ INSERT INTO settings (key, value, sensitive) VALUES
     ('infisical_env',    'prod', 0),
     ('infisical_url',    '', 0),
     ('git_user_name',    'stackd', 0),
-    ('git_user_email',   'stackd@localhost', 0),
-    ('pull_only',        'false', 0)
+    ('git_user_email',   'stackd@localhost', 0)
 ON CONFLICT (key) DO NOTHING;
