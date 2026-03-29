@@ -38,7 +38,7 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing })
         <div class="detail-header__actions">
           {onForceSync && (
             <button
-              class={`ctrl-btn${isSyncing ? ' ctrl-btn--loading' : ''}`}
+              class={`ctrl-btn detail-sync-btn${isSyncing ? ' ctrl-btn--loading' : ''}`}
               onClick={() => onForceSync(stack.repoName)}
               disabled={isSyncing}
               aria-label={`Force sync ${stack?.repoName || 'repo'}`}

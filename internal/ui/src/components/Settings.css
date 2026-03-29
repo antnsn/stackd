@@ -91,8 +91,8 @@
 .settings-error {
   margin: 0 0 var(--space-3);
   padding: 10px 14px;
-  background: rgba(248, 81, 73, 0.1);
-  border: 1px solid rgba(248, 81, 73, 0.3);
+  background: color-mix(in srgb, var(--status-stopped) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-stopped) 30%, transparent);
   border-radius: var(--radius-md);
   color: var(--status-stopped);
   font-size: var(--text-base);
@@ -101,8 +101,8 @@
 .settings-success {
   margin: 0 0 var(--space-3);
   padding: 10px 14px;
-  background: rgba(63, 185, 80, 0.1);
-  border: 1px solid rgba(63, 185, 80, 0.3);
+  background: color-mix(in srgb, var(--status-running) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-running) 30%, transparent);
   border-radius: var(--radius-md);
   color: var(--status-running);
   font-size: var(--text-base);
@@ -328,7 +328,7 @@
 }
 
 .btn-icon--danger:hover {
-  background: rgba(248, 81, 73, 0.1);
+  background: color-mix(in srgb, var(--status-stopped) 10%, transparent);
   color: var(--status-stopped);
 }
 
@@ -352,7 +352,7 @@
 }
 
 .btn-close:hover {
-  background: rgba(248, 81, 73, 0.1);
+  background: color-mix(in srgb, var(--status-stopped) 10%, transparent);
   color: var(--status-stopped);
 }
 
@@ -439,7 +439,7 @@
 }
 
 .status-pill--on {
-  background: rgba(63, 185, 80, 0.12);
+  background: color-mix(in srgb, var(--status-running) 12%, transparent);
   color: var(--status-running);
 }
 
@@ -520,11 +520,11 @@
 
 .btn-danger-confirm {
   color: var(--status-stopped);
-  border-color: rgba(248, 81, 73, 0.4);
+  border-color: color-mix(in srgb, var(--status-stopped) 40%, transparent);
 }
 
 .btn-danger-confirm:hover {
-  background: rgba(248, 81, 73, 0.1);
+  background: color-mix(in srgb, var(--status-stopped) 10%, transparent);
   color: var(--status-stopped);
 }
 

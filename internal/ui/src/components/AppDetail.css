@@ -80,6 +80,11 @@
   outline-offset: 2px;
 }
 
+/* Sync button in detail header — only shown on mobile where AppGrid is hidden */
+.detail-sync-btn {
+  display: none;
+}
+
 /* ── Stack metadata grid ─────────────────────────── */
 .stack-meta-grid {
   display: flex;
@@ -691,6 +696,11 @@
 @media (max-width: 768px) {
   .close-btn--desktop {
     display: none;
+  }
+
+  /* Show sync btn on mobile — AppGrid is hidden behind the overlay */
+  .detail-sync-btn {
+    display: flex;
   }
 
   /* Compact header chrome to maximise content area */
