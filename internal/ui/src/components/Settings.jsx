@@ -1,0 +1,467 @@
+import { useState, useEffect } from 'preact/hooks'
+import './Settings.css'
+
+// ---- Repos tab -----------------------------------------------------------
+
+function ReposTab({ sshKeys }) {
+  const [repos, setRepos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [modal, setModal] = useState(null) // null | 'add' | repo object
+
+  const loadRepos = () => {
+    setLoading(true)
+    fetch('/api/settings/repos')
+      .then(r => r.json())
+      .then(data => { setRepos(data); setLoading(false) })
+      .catch(e => { setError(e.message); setLoading(false) })
+  }
+
+  useEffect(loadRepos, [])
+
+  const deleteRepo = async (id, name) => {
+    if (!confirm(`Delete "${name}"? Active syncs will stop.`)) return
+    await fetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
+    loadRepos()
+  }
+
+  return (
+    <div class="settings-tab">
+      <div class="settings-tab__header">
+        <h2>Repositories</h2>
+        <button class="btn-primary" onClick={() => setModal('add')}>+ Add repo</button>
+      </div>
+      {error && <p class="settings-error">{error}</p>}
+      {loading ? (
+        <p class="settings-loading">Loading…</p>
+      ) : repos.length === 0 ? (
+        <div class="settings-empty">
+          <p>No repos configured.</p>
+          <p>Add a repository to start syncing Docker Compose stacks.</p>
+        </div>
+      ) : (
+        <div class="table-wrap">
+          <table class="settings-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Branch</th>
+                <th>Auth</th>
+                <th>Stacks dir</th>
+                <th>Interval</th>
+                <th>Status</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {repos.map(repo => (
+                <tr key={repo.id}>
+                  <td class="td-name">{repo.name}</td>
+                  <td class="td-url">{repo.url}</td>
+                  <td>{repo.branch}</td>
+                  <td>{repo.authType || 'none'}</td>
+                  <td class="td-mono">{repo.stacksDir || '.'}</td>
+                  <td>{repo.syncInterval}s</td>
+                  <td>
+                    <span class={`status-pill ${repo.enabled ? 'status-pill--on' : 'status-pill--off'}`}>
+                      {repo.enabled ? 'enabled' : 'disabled'}
+                    </span>
+                  </td>
+                  <td class="td-actions">
+                    <button class="btn-icon" onClick={() => setModal(repo)} aria-label="Edit repo">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61z"/></svg>
+                    </button>
+                    <button class="btn-icon btn-icon--danger" onClick={() => deleteRepo(repo.id, repo.name)} aria-label="Delete repo">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {modal && (
+        <RepoModal
+          repo={modal === 'add' ? null : modal}
+          sshKeys={sshKeys}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); loadRepos() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function RepoModal({ repo, sshKeys, onClose, onSaved }) {
+  const isEdit = !!repo
+  const [form, setForm] = useState({
+    name: repo?.name || '',
+    url: repo?.url || '',
+    branch: repo?.branch || 'main',
+    remote: repo?.remote || 'origin',
+    authType: repo?.authType || 'none',
+    sshKeyId: repo?.sshKeyId || '',
+    pat: '',
+    stacksDir: repo?.stacksDir || '.',
+    syncInterval: repo?.syncInterval || 60,
+    enabled: repo?.enabled !== false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
+
+  const save = async () => {
+    if (!form.name || !form.url) { setError('Name and URL are required'); return }
+    setSaving(true); setError(null)
+    const body = { ...form, syncInterval: Number(form.syncInterval) }
+    if (body.authType !== 'pat') delete body.pat
+    if (body.authType !== 'ssh') delete body.sshKeyId
+
+    const url = isEdit ? `/api/settings/repos/${repo.id}` : '/api/settings/repos'
+    try {
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Save failed'); setSaving(false); return }
+      onSaved()
+    } catch (e) { setError(e.message); setSaving(false) }
+  }
+
+  return (
+    <div class="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h3 id="modal-title">{isEdit ? 'Edit repository' : 'Add repository'}</h3>
+          <button class="btn-close" onClick={onClose} aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          {error && <p class="settings-error">{error}</p>}
+          <div class="form-grid">
+            <label class="form-label">
+              Name
+              <input class="form-input" value={form.name} onInput={e => set('name', e.target.value)} placeholder="my-infra" />
+            </label>
+            <label class="form-label">
+              URL
+              <input class="form-input" value={form.url} onInput={e => set('url', e.target.value)} placeholder="git@github.com:user/repo.git" />
+            </label>
+            <label class="form-label">
+              Branch
+              <input class="form-input" value={form.branch} onInput={e => set('branch', e.target.value)} />
+            </label>
+            <label class="form-label">
+              Remote
+              <input class="form-input" value={form.remote} onInput={e => set('remote', e.target.value)} />
+            </label>
+            <label class="form-label">
+              Authentication
+              <select class="form-select" value={form.authType} onChange={e => set('authType', e.target.value)} name="authType">
+                <option value="none">None (public repo)</option>
+                <option value="ssh">SSH key</option>
+                <option value="pat">PAT (HTTPS)</option>
+              </select>
+            </label>
+            {form.authType === 'ssh' && (
+              <label class="form-label">
+                SSH key
+                <select class="form-select" value={form.sshKeyId} onChange={e => set('sshKeyId', e.target.value)} name="sshKeyId">
+                  <option value="">— select a key —</option>
+                  {sshKeys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+                </select>
+              </label>
+            )}
+            {form.authType === 'pat' && (
+              <label class="form-label">
+                Personal Access Token
+                <input class="form-input" type="password" value={form.pat} onInput={e => set('pat', e.target.value)}
+                  placeholder={isEdit ? '(leave blank to keep current)' : 'ghp_…'} />
+              </label>
+            )}
+            <label class="form-label">
+              Stacks directory
+              <input class="form-input" value={form.stacksDir} onInput={e => set('stacksDir', e.target.value)} placeholder="." />
+            </label>
+            <label class="form-label">
+              Sync interval (seconds)
+              <input class="form-input" type="number" value={form.syncInterval} onInput={e => set('syncInterval', e.target.value)} min="10" />
+            </label>
+            <label class="form-label form-checkbox-row">
+              <input type="checkbox" checked={form.enabled} onChange={e => set('enabled', e.target.checked)} />
+              Enabled
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost" onClick={onClose}>Cancel</button>
+          <button class="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- SSH Keys tab --------------------------------------------------------
+
+function SSHKeysTab({ onKeysChange }) {
+  const [keys, setKeys] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ name: '', privateKey: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+
+  const loadKeys = () => {
+    setLoading(true)
+    fetch('/api/settings/ssh-keys')
+      .then(r => r.json())
+      .then(data => { setKeys(data); setLoading(false); onKeysChange?.(data) })
+      .catch(e => { setError(e.message); setLoading(false) })
+  }
+
+  useEffect(loadKeys, [])
+
+  const addKey = async () => {
+    if (!form.name || !form.privateKey) { setError('Name and private key are required'); return }
+    setSaving(true); setError(null); setSuccess(null)
+    try {
+      const res = await fetch('/api/settings/ssh-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to add key'); setSaving(false); return }
+      setForm({ name: '', privateKey: '' })
+      const pub = data.publicKey || ''
+      setSuccess('Key added — ' + (pub.length > 50 ? pub.slice(0, 50) + '…' : pub))
+      setSaving(false)
+      loadKeys()
+    } catch (e) { setError(e.message); setSaving(false) }
+  }
+
+  const deleteKey = async (id, name) => {
+    if (!confirm(`Delete "${name}"? Repos using it will fail to sync.`)) return
+    await fetch(`/api/settings/ssh-keys/${id}`, { method: 'DELETE' })
+    loadKeys()
+  }
+
+  return (
+    <div class="settings-tab">
+      <div class="settings-tab__header"><h2>SSH Keys</h2></div>
+
+      <div class="settings-section">
+        <h3>Add key</h3>
+        {error && <p class="settings-error">{error}</p>}
+        {success && <p class="settings-success">{success}</p>}
+        <div class="form-grid">
+          <label class="form-label">
+            Name
+            <input class="form-input" value={form.name} onInput={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="deploy-key" />
+          </label>
+          <label class="form-label">
+            Private key (PEM)
+            <textarea
+              class="form-input form-textarea mono"
+              value={form.privateKey}
+              onInput={e => setForm(f => ({ ...f, privateKey: e.target.value }))}
+              placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n…\n-----END OPENSSH PRIVATE KEY-----'}
+              rows={8}
+            />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" onClick={addKey} disabled={saving}>
+            {saving ? 'Adding…' : 'Add key'}
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Stored keys</h3>
+        {loading ? (
+          <p class="settings-loading">Loading…</p>
+        ) : keys.length === 0 ? (
+          <p class="settings-empty">No SSH keys stored.</p>
+        ) : (
+          <div class="key-list">
+            {keys.map(k => (
+              <div class="key-item" key={k.id}>
+                <div class="key-item__body">
+                  <span class="key-item__name">{k.name}</span>
+                  <span class="key-item__pub mono">{k.publicKey}</span>
+                </div>
+                <button class="btn-icon btn-icon--danger" onClick={() => deleteKey(k.id, k.name)} aria-label={`Delete ${k.name}`}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---- General Settings tab ------------------------------------------------
+
+function GeneralTab() {
+  const [meta, setMeta] = useState(null)
+  const [form, setForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+
+  const load = () =>
+    fetch('/api/settings/general')
+      .then(r => r.json())
+      .then(data => {
+        setMeta(data)
+        setForm({
+          infisicalToken: '',
+          infisicalEnv: data.infisicalEnv || 'prod',
+          infisicalUrl: data.infisicalUrl || '',
+          gitUserName: data.gitUserName || '',
+          gitUserEmail: data.gitUserEmail || '',
+          pullOnly: data.pullOnly || false,
+        })
+      })
+      .catch(e => setError(e.message))
+
+  useEffect(load, [])
+
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
+
+  const save = async () => {
+    setSaving(true); setError(null); setSuccess(null)
+    const body = {
+      infisicalEnv: form.infisicalEnv,
+      infisicalUrl: form.infisicalUrl,
+      gitUserName: form.gitUserName,
+      gitUserEmail: form.gitUserEmail,
+      pullOnly: form.pullOnly,
+    }
+    if (form.infisicalToken) body.infisicalToken = form.infisicalToken
+    try {
+      const res = await fetch('/api/settings/general', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Save failed'); setSaving(false); return }
+      setSuccess('Settings saved')
+      setSaving(false)
+      load()
+    } catch (e) { setError(e.message); setSaving(false) }
+  }
+
+  if (!form) return <p class="settings-loading">Loading…</p>
+
+  return (
+    <div class="settings-tab">
+      <div class="settings-tab__header"><h2>General</h2></div>
+      {error && <p class="settings-error">{error}</p>}
+      {success && <p class="settings-success">{success}</p>}
+
+      <div class="settings-section">
+        <h3>Infisical</h3>
+        <div class="form-grid">
+          <label class="form-label">
+            Machine token
+            {meta?.infisicalTokenSet && (
+              <span class="field-hint">
+                <span class="dot dot--green" aria-hidden="true"></span> token set
+              </span>
+            )}
+            <input
+              class="form-input"
+              type="password"
+              value={form.infisicalToken}
+              onInput={e => set('infisicalToken', e.target.value)}
+              placeholder={meta?.infisicalTokenSet ? '(leave blank to keep current)' : 'machine token…'}
+            />
+          </label>
+          <label class="form-label">
+            Environment
+            <input class="form-input" value={form.infisicalEnv} onInput={e => set('infisicalEnv', e.target.value)} placeholder="prod" />
+          </label>
+          <label class="form-label">
+            Self-hosted URL <span class="form-optional">(optional)</span>
+            <input class="form-input" value={form.infisicalUrl} onInput={e => set('infisicalUrl', e.target.value)} placeholder="https://infisical.example.com" />
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Git</h3>
+        <div class="form-grid">
+          <label class="form-label">
+            Commit author name
+            <input class="form-input" value={form.gitUserName} onInput={e => set('gitUserName', e.target.value)} />
+          </label>
+          <label class="form-label">
+            Commit author email
+            <input class="form-input" value={form.gitUserEmail} onInput={e => set('gitUserEmail', e.target.value)} />
+          </label>
+          <label class="form-label form-checkbox-row">
+            <input type="checkbox" checked={form.pullOnly} onChange={e => set('pullOnly', e.target.checked)} />
+            Pull-only mode — disable push back to origin
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---- Settings root -------------------------------------------------------
+
+export function Settings() {
+  const [tab, setTab] = useState('repos')
+  const [sshKeys, setSSHKeys] = useState([])
+
+  return (
+    <div class="settings-page">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <button
+          class={`settings-nav__item ${tab === 'repos' ? 'active' : ''}`}
+          onClick={() => setTab('repos')}
+        >
+          Repositories
+        </button>
+        <button
+          class={`settings-nav__item ${tab === 'ssh' ? 'active' : ''}`}
+          onClick={() => setTab('ssh')}
+        >
+          SSH Keys
+        </button>
+        <button
+          class={`settings-nav__item ${tab === 'general' ? 'active' : ''}`}
+          onClick={() => setTab('general')}
+        >
+          General
+        </button>
+      </nav>
+      <div class="settings-content">
+        {tab === 'repos' && <ReposTab sshKeys={sshKeys} />}
+        {tab === 'ssh' && <SSHKeysTab onKeysChange={setSSHKeys} />}
+        {tab === 'general' && <GeneralTab />}
+      </div>
+    </div>
+  )
+}

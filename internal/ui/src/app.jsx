@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'preact/hooks'
 import { AppGrid } from './components/AppGrid'
 import { AppDetail } from './components/AppDetail'
+import { Settings } from './components/Settings'
 import './app.css'
 
 export function App() {
+  const [page, setPage] = useState('dashboard') // 'dashboard' | 'settings'
   const [repos, setRepos] = useState([])
   const [infisical, setInfisical] = useState(null)
   const [selectedStack, setSelectedStack] = useState(null)
@@ -82,6 +84,20 @@ export function App() {
           {infisical?.enabled && (
             <span class="infisical-badge">Infisical · {infisical.env}</span>
           )}
+          <nav class="app-nav" aria-label="Main navigation">
+            <button
+              class={`app-nav__btn ${page === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setPage('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              class={`app-nav__btn ${page === 'settings' ? 'active' : ''}`}
+              onClick={() => setPage('settings')}
+            >
+              Settings
+            </button>
+          </nav>
         </div>
       </header>
 
@@ -93,24 +109,30 @@ export function App() {
       )}
 
       <div class="app-container">
-        <div class="grid-panel">
-          <AppGrid
-            repos={repos}
-            selectedStack={selectedStack}
-            syncingRepos={syncingRepos}
-            syncStatus={syncStatus}
-            onSelectStack={setSelectedStack}
-            onForceSync={handleForceSync}
-          />
-        </div>
-        {selectedStack && (
-          <div class="detail-panel">
-            <AppDetail
-              stack={selectedStack}
-              onClose={() => setSelectedStack(null)}
-              onRefresh={fetchStatus}
-            />
-          </div>
+        {page === 'settings' ? (
+          <Settings />
+        ) : (
+          <>
+            <div class="grid-panel">
+              <AppGrid
+                repos={repos}
+                selectedStack={selectedStack}
+                syncingRepos={syncingRepos}
+                syncStatus={syncStatus}
+                onSelectStack={setSelectedStack}
+                onForceSync={handleForceSync}
+              />
+            </div>
+            {selectedStack && (
+              <div class="detail-panel">
+                <AppDetail
+                  stack={selectedStack}
+                  onClose={() => setSelectedStack(null)}
+                  onRefresh={fetchStatus}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
