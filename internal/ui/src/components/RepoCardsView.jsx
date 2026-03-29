@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'preact/hooks'
+import { useState, useMemo, useRef, useEffect } from 'preact/hooks'
 import { formatRelative } from '../utils/time.js'
 import './RepoCardsView.css'
 
@@ -84,19 +84,7 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
           )}
         </div>
 
-        <div class="repo-sort">
-          <label class="sort-label" for="cards-sort">Sort</label>
-          <select
-            id="cards-sort"
-            class="sort-select"
-            value={sort}
-            onChange={e => setSort(e.target.value)}
-          >
-            {SORT_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+        <SortDropdown value={sort} onChange={setSort} options={SORT_OPTIONS} />
 
         {search && (
           <span class="repo-filter-count">{filtered.length} of {stacks.length}</span>
@@ -135,6 +123,54 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
             />
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+function SortDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value)
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleKey = e => {
+    if (e.key === 'Escape') setOpen(false)
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o) }
+  }
+
+  return (
+    <div class={`sort-dropdown${open ? ' sort-dropdown--open' : ''}`} ref={ref}>
+      <span class="sort-label">Sort</span>
+      <button
+        class="sort-dropdown__trigger"
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={handleKey}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {current?.label}
+        <span class="sort-dropdown__chevron" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <ul class="sort-dropdown__menu" role="listbox">
+          {options.map(o => (
+            <li
+              key={o.value}
+              class={`sort-dropdown__item${o.value === value ? ' sort-dropdown__item--active' : ''}`}
+              role="option"
+              aria-selected={o.value === value}
+              onClick={() => { onChange(o.value); setOpen(false) }}
+            >
+              {o.label}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )

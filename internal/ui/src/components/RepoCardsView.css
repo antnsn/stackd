@@ -165,6 +165,89 @@
   flex-shrink: 0;
 }
 
+/* ── Custom sort dropdown ────────────────────────── */
+.sort-dropdown {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.sort-dropdown__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  padding: 4px var(--space-3);
+  cursor: pointer;
+  min-height: 32px;
+  transition: border-color 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
+.sort-dropdown__trigger:hover {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.sort-dropdown__trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sort-dropdown__chevron {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  transition: transform 0.15s var(--ease-out-quart);
+  line-height: 1;
+}
+
+.sort-dropdown--open .sort-dropdown__chevron {
+  transform: rotate(180deg);
+}
+
+.sort-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  min-width: 180px;
+  animation: fadeIn 0.1s var(--ease-out-quart) both;
+}
+
+.sort-dropdown__item {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
+.sort-dropdown__item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sort-dropdown__item--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .repo-filter-count {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
