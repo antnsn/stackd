@@ -683,7 +683,7 @@ func main() {
 			return
 		}
 		repoCtx, repoCancel := context.WithTimeout(ctx, 10*time.Second)
-		repoDB, err := db.GetRepo(repoCtx, sqlDB, repoName)
+		repoDB, err := db.GetRepoByName(repoCtx, sqlDB, repoName)
 		repoCancel()
 		if err != nil {
 			slog.Error("applyStack: repo not found in db", "repo", repoName, "err", err)

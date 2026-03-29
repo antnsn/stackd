@@ -87,6 +87,18 @@ func GetRepo(ctx context.Context, db *sql.DB, id string) (RepoDB, error) {
 	return r, nil
 }
 
+func GetRepoByName(ctx context.Context, db *sql.DB, name string) (RepoDB, error) {
+	row := db.QueryRowContext(ctx,
+		Rebind(`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
+                stacks_dir, sync_interval, enabled, created_at, updated_at
+         FROM repos WHERE name = ?`), name)
+	r, err := scanRepo(row)
+	if err != nil {
+		return RepoDB{}, fmt.Errorf("getRepoByName: %w", err)
+	}
+	return r, nil
+}
+
 func CreateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 	if r.ID == "" {
 		r.ID = newUUID()
