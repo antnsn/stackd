@@ -343,6 +343,7 @@ function GeneralTab() {
         setMeta(data)
         setForm({
           infisicalToken: '',
+          infisicalProjectId: data.infisicalProjectId || '',
           infisicalEnv: data.infisicalEnv || 'prod',
           infisicalUrl: data.infisicalUrl || '',
           gitUserName: data.gitUserName || '',
@@ -359,6 +360,7 @@ function GeneralTab() {
   const save = async () => {
     setSaving(true); setError(null); setSuccess(null)
     const body = {
+      infisicalProjectId: form.infisicalProjectId,
       infisicalEnv: form.infisicalEnv,
       infisicalUrl: form.infisicalUrl,
       gitUserName: form.gitUserName,
@@ -404,6 +406,15 @@ function GeneralTab() {
               value={form.infisicalToken}
               onInput={e => set('infisicalToken', e.target.value)}
               placeholder={meta?.infisicalTokenSet ? '(leave blank to keep current)' : 'machine token…'}
+            />
+          </label>
+          <label class="form-label">
+            Project ID
+            <input
+              class="form-input"
+              value={form.infisicalProjectId}
+              onInput={e => set('infisicalProjectId', e.target.value)}
+              placeholder="e.g. 3c90a1b2-..."
             />
           </label>
           <label class="form-label">

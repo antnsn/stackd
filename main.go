@@ -39,9 +39,10 @@ var repoLocks sync.Map   // key: repo name (string), value: *sync.Mutex
 
 // InfisicalConfig holds Infisical credentials loaded from DB settings.
 type InfisicalConfig struct {
-	Token string
-	Env   string
-	URL   string
+	Token     string
+	Env       string
+	URL       string
+	ProjectID string
 }
 
 func getBackoff(repoName string) *syncBackoff {
@@ -153,6 +154,9 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 	}
 
 	args := []string{"run", "--token=" + cfg.Token, "--env=" + cfg.Env}
+	if cfg.ProjectID != "" {
+		args = append(args, "--projectId="+cfg.ProjectID)
+	}
 	if cfg.URL != "" {
 		args = append(args, "--domain="+cfg.URL)
 	}
@@ -455,6 +459,7 @@ func loadInfisicalFromDB(ctx context.Context, sqlDB *sql.DB, cryptoKey []byte) I
 		cfg.Env = v
 	}
 	cfg.URL = settings["infisical_url"]
+	cfg.ProjectID = settings["infisical_project_id"]
 	// GetAllSettings masks sensitive values; fetch token separately
 	tokenEnc, _, err := db.GetSetting(ctx, sqlDB, "infisical_token")
 	if err == nil && tokenEnc != "" {

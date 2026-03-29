@@ -297,21 +297,23 @@ jsonOK(w, map[string]bool{"ok": true})
 // ---- General Settings -----------------------------------------------------
 
 type generalSettingsResponse struct {
-InfisicalTokenSet bool   `json:"infisicalTokenSet"`
-InfisicalEnv      string `json:"infisicalEnv"`
-InfisicalURL      string `json:"infisicalUrl"`
-GitUserName       string `json:"gitUserName"`
-GitUserEmail      string `json:"gitUserEmail"`
-PullOnly          bool   `json:"pullOnly"`
+InfisicalTokenSet  bool   `json:"infisicalTokenSet"`
+InfisicalProjectID string `json:"infisicalProjectId"`
+InfisicalEnv       string `json:"infisicalEnv"`
+InfisicalURL       string `json:"infisicalUrl"`
+GitUserName        string `json:"gitUserName"`
+GitUserEmail       string `json:"gitUserEmail"`
+PullOnly           bool   `json:"pullOnly"`
 }
 
 type generalSettingsRequest struct {
-InfisicalToken *string `json:"infisicalToken"`
-InfisicalEnv   *string `json:"infisicalEnv"`
-InfisicalURL   *string `json:"infisicalUrl"`
-GitUserName    *string `json:"gitUserName"`
-GitUserEmail   *string `json:"gitUserEmail"`
-PullOnly       *bool   `json:"pullOnly"`
+InfisicalToken     *string `json:"infisicalToken"`
+InfisicalProjectID *string `json:"infisicalProjectId"`
+InfisicalEnv       *string `json:"infisicalEnv"`
+InfisicalURL       *string `json:"infisicalUrl"`
+GitUserName        *string `json:"gitUserName"`
+GitUserEmail       *string `json:"gitUserEmail"`
+PullOnly           *bool   `json:"pullOnly"`
 }
 
 func (s *Server) handleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
@@ -322,12 +324,13 @@ return
 }
 tokenRaw, _, _ := db.GetSetting(r.Context(), s.db, "infisical_token")
 jsonOK(w, generalSettingsResponse{
-InfisicalTokenSet: tokenRaw != "",
-InfisicalEnv:      settings["infisical_env"],
-InfisicalURL:      settings["infisical_url"],
-GitUserName:       settings["git_user_name"],
-GitUserEmail:      settings["git_user_email"],
-PullOnly:          settings["pull_only"] == "true",
+InfisicalTokenSet:  tokenRaw != "",
+InfisicalProjectID: settings["infisical_project_id"],
+InfisicalEnv:       settings["infisical_env"],
+InfisicalURL:       settings["infisical_url"],
+GitUserName:        settings["git_user_name"],
+GitUserEmail:       settings["git_user_email"],
+PullOnly:           settings["pull_only"] == "true",
 })
 }
 
@@ -346,6 +349,9 @@ jsonError(w, "failed to encrypt token", http.StatusInternalServerError)
 return
 }
 updates = append(updates, kv{"infisical_token", enc})
+}
+if req.InfisicalProjectID != nil {
+updates = append(updates, kv{"infisical_project_id", *req.InfisicalProjectID})
 }
 if req.InfisicalEnv != nil {
 updates = append(updates, kv{"infisical_env", *req.InfisicalEnv})
