@@ -77,9 +77,9 @@ func ListRepos(ctx context.Context, db *sql.DB) ([]RepoDB, error) {
 
 func GetRepo(ctx context.Context, db *sql.DB, id string) (RepoDB, error) {
 	row := db.QueryRowContext(ctx,
-		`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
+		Rebind(`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
                 stacks_dir, sync_interval, enabled, created_at, updated_at
-         FROM repos WHERE id = ?`, id)
+         FROM repos WHERE id = ?`), id)
 	r, err := scanRepo(row)
 	if err != nil {
 		return RepoDB{}, fmt.Errorf("getRepo: %w", err)
@@ -93,9 +93,9 @@ func CreateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 	}
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO repos (id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
+		Rebind(`INSERT INTO repos (id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
                             stacks_dir, sync_interval, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		r.ID, r.Name, r.URL, r.Branch, r.Remote,
 		r.AuthType, nullStr(r.SSHKeyID), nullStr(r.PATEnc),
 		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), now, now,
@@ -109,10 +109,10 @@ func CreateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 func UpdateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
-		`UPDATE repos SET name=?, url=?, branch=?, remote=?, auth_type=?,
+		Rebind(`UPDATE repos SET name=?, url=?, branch=?, remote=?, auth_type=?,
                           ssh_key_id=?, pat_enc=?, stacks_dir=?, sync_interval=?,
                           enabled=?, updated_at=?
-         WHERE id=?`,
+         WHERE id=?`),
 		r.Name, r.URL, r.Branch, r.Remote, r.AuthType,
 		nullStr(r.SSHKeyID), nullStr(r.PATEnc),
 		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), now, r.ID,
@@ -124,7 +124,7 @@ func UpdateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 }
 
 func DeleteRepo(ctx context.Context, db *sql.DB, id string) error {
-	_, err := db.ExecContext(ctx, `DELETE FROM repos WHERE id=?`, id)
+	_, err := db.ExecContext(ctx, Rebind(`DELETE FROM repos WHERE id=?`), id)
 	if err != nil {
 		return fmt.Errorf("deleteRepo: %w", err)
 	}
