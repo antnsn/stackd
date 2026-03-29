@@ -1,0 +1,306 @@
+/* ── Repo cards view ─────────────────────────────── */
+.repo-cards-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ── Header ──────────────────────────────────────── */
+.repo-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  gap: var(--space-3);
+}
+
+.repo-cards-title {
+  font-family: var(--font-ui);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-cards-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.repo-sync-msg {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.repo-sync-msg--success  { color: var(--status-running);  background: color-mix(in srgb, var(--status-running)  12%, transparent); }
+.repo-sync-msg--rateLimit,
+.repo-sync-msg--error    { color: var(--status-degraded); background: color-mix(in srgb, var(--status-degraded) 12%, transparent); }
+
+.repo-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  min-height: 36px;
+}
+
+.repo-sync-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.repo-sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.repo-sync-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.repo-sync-btn__icon {
+  display: inline-block;
+  transition: transform 0.1s;
+}
+
+.repo-sync-btn--spinning .repo-sync-btn__icon {
+  animation: spin 0.7s linear infinite;
+}
+
+/* ── Toolbar (search + sort) ─────────────────────── */
+.repo-cards-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.repo-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  flex: 1;
+  max-width: 320px;
+  transition: border-color 0.1s;
+}
+
+.repo-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.repo-search__icon {
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  flex-shrink: 0;
+  line-height: 1;
+  user-select: none;
+}
+
+.repo-search__input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  padding: var(--space-1) 0;
+  min-width: 0;
+}
+
+.repo-search__input::placeholder { color: var(--text-muted); }
+
+.repo-search__clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.repo-search__clear:hover { color: var(--text-primary); }
+.repo-search__clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.repo-sort {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.repo-filter-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Cards grid ──────────────────────────────────── */
+.repo-cards-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.repo-cards-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+/* ── Individual stack card ───────────────────────── */
+.stack-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s var(--ease-out-quart),
+              background 0.15s var(--ease-out-quart),
+              transform 0.1s var(--ease-out-quart);
+  animation: cardEnter 0.3s var(--ease-out-quart) both;
+  animation-delay: calc(var(--card-i, 0) * 45ms);
+  min-height: 96px;
+  width: 100%;
+  border-left-width: 3px;
+}
+
+.stack-card-main:hover {
+  background: var(--bg-tertiary);
+  transform: translateY(-2px);
+}
+
+.stack-card-main:active { transform: translateY(0); }
+
+.stack-card-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Status accent border */
+.stack-card-main--running  { border-left-color: var(--status-running);  }
+.stack-card-main--stopped,
+.stack-card-main--exited   { border-left-color: var(--status-stopped);  }
+.stack-card-main--error    { border-left-color: var(--status-error);    }
+.stack-card-main--applying { border-left-color: var(--status-applying); }
+.stack-card-main--unknown  { border-left-color: var(--status-unknown);  }
+
+.stack-card-main__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stack-card-main__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.4s var(--ease-out-quart);
+}
+
+.stack-card-main--running  .stack-card-main__dot { background: var(--status-running);  }
+.stack-card-main--stopped  .stack-card-main__dot,
+.stack-card-main--exited   .stack-card-main__dot { background: var(--status-stopped);  }
+.stack-card-main--error    .stack-card-main__dot { background: var(--status-error);    }
+.stack-card-main--applying .stack-card-main__dot { background: var(--status-applying); }
+.stack-card-main--unknown  .stack-card-main__dot { background: var(--status-unknown);  }
+
+.stack-card-main__name {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stack-card-main__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.stack-card-main__badge {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: capitalize;
+}
+
+.stack-card-main--running  .stack-card-main__badge { color: var(--status-running);  background: color-mix(in srgb, var(--status-running)  12%, transparent); }
+.stack-card-main--stopped  .stack-card-main__badge,
+.stack-card-main--exited   .stack-card-main__badge { color: var(--status-stopped);  background: color-mix(in srgb, var(--status-stopped)  12%, transparent); }
+.stack-card-main--error    .stack-card-main__badge { color: var(--status-error);    background: color-mix(in srgb, var(--status-error)    12%, transparent); }
+.stack-card-main--applying .stack-card-main__badge { color: var(--status-applying); background: color-mix(in srgb, var(--status-applying) 12%, transparent); }
+.stack-card-main--unknown  .stack-card-main__badge { color: var(--status-unknown);  background: color-mix(in srgb, var(--status-unknown)  12%, transparent); }
+
+.stack-card-main__ctrs {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.stack-card-main__error {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 8%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack-card-main { animation: none; transition: none; }
+  .repo-sync-btn--spinning .repo-sync-btn__icon { animation: none; }
+}

@@ -1,17 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'preact/hooks'
-import { AppGrid } from './components/AppGrid'
 import { AppDetail } from './components/AppDetail'
+import { RepoCardsView } from './components/RepoCardsView'
 import { Settings } from './components/Settings'
 import './app.css'
 
 export function App() {
-  const [page, setPage] = useState('dashboard') // 'dashboard' | 'settings'
+  const [page, setPage] = useState('dashboard')
   const [repos, setRepos] = useState([])
   const [infisical, setInfisical] = useState(null)
+  const [selectedRepo, setSelectedRepo] = useState(null)
   const [selectedStack, setSelectedStack] = useState(null)
   const [error, setError] = useState(null)
   const [syncingRepos, setSyncingRepos] = useState(new Set())
-  // syncStatus: Map<repoName, { state: 'success'|'rateLimit'|'error', message?: string }>
   const [syncStatus, setSyncStatus] = useState({})
 
   const [lastFetched, setLastFetched] = useState(null)
@@ -75,6 +75,13 @@ export function App() {
     }
   }, [repos])
 
+  // Auto-select first repo when repos load
+  useEffect(() => {
+    if (repos.length > 0 && !selectedRepo) {
+      setSelectedRepo(repos[0].name)
+    }
+  }, [repos])
+
   const clearSyncing = (repoName) => {
     setSyncingRepos(prev => {
       const s = new Set(prev)
@@ -127,6 +134,8 @@ export function App() {
       })()
     : null
 
+  const currentRepo = repos.find(r => r.name === selectedRepo) || null
+
   return (
     <div class="app-shell">
       <aside class="app-sidebar">
@@ -142,14 +151,24 @@ export function App() {
           </button>
         </div>
         <div class="sidebar-body">
-          <AppGrid
-            repos={repos}
-            selectedStack={selectedStack}
-            syncingRepos={syncingRepos}
-            syncStatus={syncStatus}
-            onSelectStack={(stack) => { setSelectedStack(stack); setPage('dashboard') }}
-            onForceSync={handleForceSync}
-          />
+          <nav class="repo-nav" aria-label="Repositories">
+            <span class="repo-nav__label">Repos</span>
+            {repos.map(repo => {
+              const hasError = (repo.stacks || []).some(s =>
+                s.status === 'error' || (s.containers || []).some(c => c.status !== 'running' && c.status !== 'unknown')
+              )
+              return (
+                <button
+                  key={repo.name}
+                  class={`repo-nav__item${selectedRepo === repo.name ? ' active' : ''}`}
+                  onClick={() => { setSelectedRepo(repo.name); setSelectedStack(null); setPage('dashboard') }}
+                >
+                  <span class={`repo-nav__dot repo-nav__dot--${hasError ? 'error' : 'ok'}`} aria-hidden="true" />
+                  <span class="repo-nav__name">{repo.name}</span>
+                </button>
+              )
+            })}
+          </nav>
         </div>
         <div class="sidebar-footer">
           <button
@@ -171,7 +190,7 @@ export function App() {
         </div>
       </aside>
 
-      <div class={`app-body${selectedStack || page === 'settings' ? ' app-body--active' : ''}`}>
+      <div class="app-body">
         {error && (
           <div class="error-banner" role="alert">
             <span><span aria-hidden="true">⚠</span> Could not reach API: {error}</span>
@@ -190,7 +209,7 @@ export function App() {
                 <button
                   key={`${s.repoName}/${s.name}`}
                   class="health-banner__link"
-                  onClick={() => { setSelectedStack(s); setPage('dashboard') }}
+                  onClick={() => { setSelectedRepo(s.repoName); setSelectedStack(s); setPage('dashboard') }}
                 >
                   {s.repoName}/{s.name}
                 </button>
@@ -212,9 +231,17 @@ export function App() {
                 isSyncing={syncingRepos.has(selectedStack?.repoName)}
               />
             </div>
+          ) : currentRepo ? (
+            <RepoCardsView
+              repo={currentRepo}
+              onSelectStack={setSelectedStack}
+              isSyncing={syncingRepos.has(currentRepo.name)}
+              onSync={handleForceSync}
+              syncStatus={syncStatus[currentRepo.name]}
+            />
           ) : (
             <div class="empty-detail">
-              <p class="empty-detail__hint">Select a stack to inspect</p>
+              <p class="empty-detail__hint">No repos configured</p>
             </div>
           )}
         </main>
