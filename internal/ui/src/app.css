@@ -16,6 +16,7 @@
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .app-header__brand {
@@ -112,6 +113,35 @@
 
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 768px) {
+  /* ── Header: compact on narrow screens ── */
+  .app-header {
+    height: auto;
+    min-height: 52px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .app-header__brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-header__meta {
+    flex-shrink: 0;
+    gap: 6px;
+  }
+
+  .infisical-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+
+  .app-nav__btn {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
   .app-container {
     flex-direction: column;
   }

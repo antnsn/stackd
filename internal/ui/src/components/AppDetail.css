@@ -412,6 +412,7 @@
   gap: 2px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 /* P1-12: hover background; font-mono */
@@ -490,6 +491,7 @@
   gap: 6px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .container-info .info-row {
