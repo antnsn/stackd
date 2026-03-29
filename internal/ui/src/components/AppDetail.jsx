@@ -44,10 +44,10 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
               class={`ctrl-btn detail-sync-btn${isApplying ? ' ctrl-btn--loading' : ''}`}
               onClick={() => onApplyStack(stack.repoName, stack.name)}
               disabled={isApplying}
-              aria-label={`Apply ${stack.name}`}
-              title="Re-apply this stack (docker compose up -d)"
+              aria-label={`Sync ${stack.name}`}
+              title="Pull latest and re-apply this stack"
             >
-              {isApplying ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Apply
+              {isApplying ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Sync
             </button>
           )}
           <button
