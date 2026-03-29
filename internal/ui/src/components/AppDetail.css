@@ -473,12 +473,16 @@
 
 /* ── Container info ──────────────────────────────── */
 .container-info {
-  padding: 16px;
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
   flex: 1;
+}
+
+.container-info .info-row {
+  margin: 0 16px;
 }
 
 .info-row {
@@ -644,40 +648,71 @@
   }
 }
 
-/* ── Compose tab button ──────────────────────────── */
-.container-tab--compose {
-  margin-left: auto;
-  font-style: italic;
-  opacity: 0.7;
-}
-.container-tab--compose.container-tab--active {
-  opacity: 1;
-}
-
-/* ── Compose file viewer ─────────────────────────── */
+/* ── Compose file viewer (inside Info tab) ───────── */
 .compose-viewer {
-  flex: 1;
-  overflow: auto;
   margin: 0;
-  padding: 16px;
+  padding: 12px 16px;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   color: #adbac7;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   white-space: pre;
   tab-size: 2;
+  overflow-x: auto;
+  border-top: 1px solid var(--border-color);
 }
 
 .compose-loading,
 .compose-error {
-  padding: 24px;
+  padding: 12px 16px;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
-  text-align: center;
 }
 
 .compose-error {
   color: var(--status-stopped);
+}
+
+/* ── Info section divider ────────────────────────── */
+.info-section-divider {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  padding: 10px 20px 4px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+}
+
+/* ── Last compose run output ─────────────────────── */
+.info-output {
+  margin: 0;
+  padding: 10px 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: #adbac7;
+}
+
+.info-output--error {
+  color: var(--status-stopped);
+  background: rgba(248, 81, 73, 0.05);
+  border-left: 2px solid var(--status-stopped);
+  padding-left: 14px;
+}
+
+.info-output--ok {
+  color: var(--text-secondary);
+}
+
+/* ── Info tab error indicator ────────────────────── */
+.info-tab--error {
+  color: var(--status-stopped) !important;
 }

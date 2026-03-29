@@ -58,12 +58,6 @@ export function AppDetail({ stack, onClose, onRefresh }) {
             <span class="meta-value meta-value--mono">{stack.stackDir}</span>
           </div>
         )}
-        {stack.lastError && (
-          <div class="meta-item meta-item--error">
-            <span class="meta-label">Error</span>
-            <pre class="meta-value meta-value--error-detail">{stack.lastError}</pre>
-          </div>
-        )}
       </div>
 
       {containers.length > 0 ? (
@@ -88,6 +82,8 @@ export function AppDetail({ stack, onClose, onRefresh }) {
               onRefresh={onRefresh}
               repoName={stack.repoName}
               stackName={stack.name}
+              lastOutput={stack.lastOutput}
+              lastError={stack.lastError}
             />
           )}
         </>
@@ -109,7 +105,7 @@ export function AppDetail({ stack, onClose, onRefresh }) {
 
 // ── ContainerDetail ───────────────────────────────────
 
-function ContainerDetail({ container, onRefresh, repoName, stackName }) {
+function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput, lastError }) {
   const [tab, setTab] = useState('logs')
   const [actionState, setActionState] = useState(null)
   const [activeAction, setActiveAction] = useState(null)
@@ -171,12 +167,12 @@ function ContainerDetail({ container, onRefresh, repoName, stackName }) {
         {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
       </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['logs', 'Logs'], ['env', 'Env'], ['info', 'Info'], ['compose', 'Compose']].map(([t, label]) => (
+        {[['logs', 'Logs'], ['env', 'Env'], ['info', lastError ? 'Info ⚠' : 'Info']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
             aria-selected={tab === t}
-            class={`info-tab ${tab === t ? 'info-tab--active' : ''}`}
+            class={`info-tab ${tab === t ? 'info-tab--active' : ''} ${t === 'info' && lastError ? 'info-tab--error' : ''}`}
             onClick={() => setTab(t)}
           >
             {label}
@@ -185,8 +181,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName }) {
       </div>
       {tab === 'logs'    && <LogStream key={container.name} containerName={container.name} />}
       {tab === 'env'     && <EnvVars envs={container.env} />}
-      {tab === 'info'    && <ContainerInfo container={container} />}
-      {tab === 'compose' && <ComposeViewer repoName={repoName} stackName={stackName} />}
+      {tab === 'info'    && <ContainerInfo container={container} lastOutput={lastOutput} lastError={lastError} repoName={repoName} stackName={stackName} />}
     </div>
   )
 }
@@ -280,7 +275,7 @@ function EnvVars({ envs }) {
 
 // ── ContainerInfo ─────────────────────────────────────
 
-function ContainerInfo({ container }) {
+function ContainerInfo({ container, lastOutput, lastError, repoName, stackName }) {
   return (
     <div class="container-info">
       {container.id && (
@@ -315,6 +310,15 @@ function ContainerInfo({ container }) {
           <span class="info-value info-value--mono">{container.ports.join(', ')}</span>
         </div>
       )}
+
+      {lastOutput && (
+        <>
+          <div class="info-section-divider">Last compose run</div>
+          <pre class={`info-output ${lastError ? 'info-output--error' : 'info-output--ok'}`}>{lastOutput}</pre>
+        </>
+      )}
+
+      <ComposeViewer repoName={repoName} stackName={stackName} />
     </div>
   )
 }
@@ -338,6 +342,9 @@ function ComposeViewer({ repoName, stackName }) {
   if (!content) return <div class="compose-loading">Loading…</div>
 
   return (
-    <pre class="compose-viewer">{content}</pre>
+    <>
+      <div class="info-section-divider">compose.yml</div>
+      <pre class="compose-viewer">{content}</pre>
+    </>
   )
 }
