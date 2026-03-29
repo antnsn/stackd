@@ -36,6 +36,15 @@
   gap: var(--space-3);
 }
 
+.freshness-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-normal);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* P1-3 fix: use --accent-border instead of hardcoded cyan rgba */
 .infisical-badge {
   font-family: var(--font-ui);

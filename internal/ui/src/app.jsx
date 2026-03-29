@@ -14,6 +14,9 @@ export function App() {
   // syncStatus: Map<repoName, { state: 'success'|'rateLimit'|'error', message?: string }>
   const [syncStatus, setSyncStatus] = useState({})
 
+  const [lastFetched, setLastFetched] = useState(null)
+  const [now, setNow] = useState(Date.now())
+
   const fetchStatus = useCallback(async () => {
     fetch('/api/status')
       .then(r => r.json())
@@ -21,6 +24,7 @@ export function App() {
         setRepos(data.repos || [])
         setInfisical(data.infisical)
         setError(null)
+        setLastFetched(Date.now())
         const errorCount = (data.repos || [])
           .flatMap(r => r.stacks || [])
           .filter(s => {
@@ -51,6 +55,12 @@ export function App() {
       clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
+  }, [])
+
+  // Tick every 10s to keep freshness label live between polls
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10000)
+    return () => clearInterval(timer)
   }, [])
 
   // Keep selectedStack live — sync it from repos on every poll so container
@@ -108,6 +118,15 @@ export function App() {
     )
   }, [repos])
 
+  const freshnessLabel = lastFetched
+    ? (() => {
+        const s = Math.floor((now - lastFetched) / 1000)
+        if (s < 15) return 'just now'
+        if (s < 60) return `${s}s ago`
+        return `${Math.floor(s / 60)}m ago`
+      })()
+    : null
+
   return (
     <div class="app-shell">
       <header class="app-header">
@@ -118,6 +137,11 @@ export function App() {
         <div class="app-header__meta">
           {infisical?.enabled && (
             <span class="infisical-badge">Infisical · {infisical.env}</span>
+          )}
+          {freshnessLabel && (
+            <span class="freshness-label" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
+              {freshnessLabel}
+            </span>
           )}
           <nav class="app-nav" aria-label="Main navigation">
             <button
