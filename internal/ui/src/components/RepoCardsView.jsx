@@ -8,7 +8,7 @@ const SORT_OPTIONS = [
   { value: 'containers',  label: 'Containers (most first)' },
 ]
 
-const STATUS_ORDER = { error: 0, stopped: 1, exited: 1, applying: 2, running: 3, unknown: 4 }
+const STATUS_ORDER = { error: 0, stopped: 1, exited: 1, applying: 2, ok: 3, running: 3, unknown: 4 }
 
 export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStatus }) {
   const [search, setSearch]   = useState('')
@@ -112,7 +112,10 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
 }
 
 function StackCard({ stack, onSelect, index }) {
-  const status     = stack.status || 'unknown'
+  const rawStatus  = stack.status || 'unknown'
+  // API returns 'ok' for healthy stacks — normalise to CSS modifier names
+  const STATUS_MAP = { ok: 'running' }
+  const status     = STATUS_MAP[rawStatus] || rawStatus
   const containers = stack.containers || []
   const running    = containers.filter(c => c.status === 'running').length
   const total      = containers.length
@@ -129,7 +132,7 @@ function StackCard({ stack, onSelect, index }) {
         <span class="stack-card-main__name">{stack.name}</span>
       </div>
       <div class="stack-card-main__meta">
-        <span class="stack-card-main__badge">{status}</span>
+        <span class="stack-card-main__badge">{rawStatus}</span>
         {total > 0 && (
           <span class="stack-card-main__ctrs">{running}/{total} ctr{total !== 1 ? 's' : ''}</span>
         )}
