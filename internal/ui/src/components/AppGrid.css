@@ -357,7 +357,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px 10px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   background: var(--bg-secondary);
 }
 
@@ -369,6 +370,7 @@
   letter-spacing: var(--tracking-wide);
   white-space: nowrap;
   flex-shrink: 0;
+  line-height: 1;
 }
 
 .sort-select {
