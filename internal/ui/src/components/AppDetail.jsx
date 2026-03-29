@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
 import './AppDetail.css'
 
@@ -69,7 +71,8 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing })
           <div class="meta-item">
             <span class="meta-label">Secrets</span>
             <span class="meta-value meta-value--infisical">
-              🔑 Infisical
+              <FontAwesomeIcon icon={faKey} />
+              Infisical
               <span class="meta-infisical-mode">
                 {stack.infisicalMode === 'per-stack' ? 'per-stack' : 'global'}
               </span>

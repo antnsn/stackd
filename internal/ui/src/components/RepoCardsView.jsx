@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'preact/hooks'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative } from '../utils/time.js'
 import './RepoCardsView.css'
 
@@ -198,7 +200,7 @@ function StackCard({ stack, onSelect, index }) {
             title={stack.infisicalMode === 'per-stack' ? 'Secrets: infisical.toml (per-stack)' : 'Secrets: Infisical (global token)'}
             aria-label={`Infisical secrets: ${stack.infisicalMode}`}
           >
-            🔑
+            <FontAwesomeIcon icon={faKey} />
           </span>
         )}
         <span class="stack-card-main__badge">{status}</span>
