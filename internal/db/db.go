@@ -99,7 +99,7 @@ func Open(dbURL string) (*sql.DB, error) {
 	if err = m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		// Dirty state means a previous migration attempt failed mid-run.
 		// Force version back to uninitialized so we can retry cleanly.
-		var dirtyErr *migrate.ErrDirty
+		var dirtyErr migrate.ErrDirty
 		if errors.As(err, &dirtyErr) {
 			slog.Warn("dirty migration state detected, forcing reset", "version", dirtyErr.Version)
 			if ferr := m.Force(-1); ferr != nil {
