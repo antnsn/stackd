@@ -95,7 +95,7 @@
 }
 
 .grid-panel {
-  width: 340px;
+  width: clamp(280px, 25vw, 380px);
   flex-shrink: 0;
   border-right: 1px solid var(--border-color);
   overflow-y: auto;
@@ -112,6 +112,17 @@
 }
 
 /* ── Responsive ──────────────────────────────────── */
+@media (max-width: 1024px) {
+  .grid-panel {
+    width: clamp(260px, 28vw, 320px);
+  }
+
+  .app-nav__btn {
+    min-height: 40px;
+    font-size: var(--text-sm);
+  }
+}
+
 @media (max-width: 768px) {
   /* ── Header: compact on narrow screens ── */
   .app-header {

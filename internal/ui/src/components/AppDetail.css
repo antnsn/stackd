@@ -58,6 +58,8 @@
   color: var(--text-secondary);
   width: 28px;
   height: 28px;
+  min-width: 32px;
+  min-height: 32px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--text-lg);
@@ -169,7 +171,7 @@
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
-  min-height: 32px;
+  min-height: 36px;
   touch-action: manipulation;
 }
 
@@ -329,7 +331,7 @@
   cursor: pointer;
   transition: color 0.1s, border-bottom-color 0.1s;
   margin-bottom: -1px;
-  min-height: 34px;
+  min-height: 36px;
   touch-action: manipulation;
 }
 
@@ -671,6 +673,25 @@
 /* ── Mobile: bottom close bar ────────────────────── */
 .mobile-close-bar {
   display: none;
+}
+
+@media (max-width: 1024px) {
+  .close-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .container-tab {
+    min-height: 40px;
+  }
+
+  .info-tab {
+    min-height: 40px;
+  }
+
+  .ctrl-btn {
+    min-height: 40px;
+  }
 }
 
 @media (max-width: 768px) {

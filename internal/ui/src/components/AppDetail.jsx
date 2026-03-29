@@ -187,7 +187,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
         {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
       </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['logs', 'Logs'], ['env', 'Env'], ['info', lastError ? 'Info ⚠' : 'Info']].map(([t, label]) => (
+        {[['logs', 'Logs'], ['env', 'Env'], ['info', lastError ? <>Info <span aria-hidden="true">⚠</span></> : 'Info']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
@@ -306,7 +306,7 @@ function EnvVars({ envs }) {
         const val = eq >= 0 ? e.slice(eq + 1) : ''
         const isRedacted = val === '[redacted]'
         return (
-          <div key={i} class="env-item" role="listitem">
+          <div key={key} class="env-item" role="listitem">
             <span class="env-key">{key}</span>
             <span
               class={`env-value ${isRedacted ? 'env-value--redacted' : ''}`}
