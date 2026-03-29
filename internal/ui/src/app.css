@@ -225,6 +225,7 @@
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   font-family: var(--font-ui);
+  animation: bannerSlide 0.2s var(--ease-out-quart) both;
 }
 
 .health-banner--error {

@@ -441,13 +441,15 @@ function ComposeViewer({ repoName, stackName, lastError }) {
         style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none"
         aria-expanded={expanded}
       >
-        compose.yml <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+        compose.yml <span aria-hidden="true" class={`compose-chevron${expanded ? '' : ' compose-chevron--closed'}`}>▾</span>
       </div>
-      {expanded && (
-        error ? <div class="compose-error">Could not load compose file: {error}</div>
-        : !content ? <div class="compose-loading">Loading…</div>
-        : <pre class="compose-viewer">{content}</pre>
-      )}
+      <div class={`compose-body${expanded ? ' compose-body--open' : ''}`}>
+        <div class="compose-body-inner">
+          {error ? <div class="compose-error">Could not load compose file: {error}</div>
+          : !content ? <div class="compose-loading">Loading…</div>
+          : <pre class="compose-viewer">{content}</pre>}
+        </div>
+      </div>
     </>
   )
 }

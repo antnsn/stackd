@@ -319,6 +319,7 @@
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
   white-space: nowrap;
+  animation: fadeIn 0.2s var(--ease-out-quart) both;
 }
 
 .sync-feedback--success {

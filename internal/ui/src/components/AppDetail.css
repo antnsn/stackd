@@ -202,6 +202,8 @@
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background-color 0.4s var(--ease-out-quart),
+              box-shadow 0.4s var(--ease-out-quart);
 }
 
 .status-dot--running {
@@ -801,6 +803,29 @@
 
 .compose-error {
   color: var(--status-stopped);
+}
+
+/* ── Compose collapse animation ──────────────────── */
+.compose-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s var(--ease-out-quart);
+}
+.compose-body--open {
+  grid-template-rows: 1fr;
+}
+.compose-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Compose chevron ──────────────────────────────── */
+.compose-chevron {
+  display: inline-block;
+  transition: transform 0.22s var(--ease-out-quart);
+}
+.compose-chevron--closed {
+  transform: rotate(-90deg);
 }
 
 /* ── Info section divider ────────────────────────── */

@@ -158,6 +158,11 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes bannerSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Easing tokens ───────────────────────────────── */
 :root {
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
@@ -175,4 +180,9 @@ body {
   .log-line                 { animation: none; }
   .status-dot--running      { animation: none; }
   .info-row, .info-section-divider, .info-output, .compose-viewer { animation: none; }
+  .compose-body             { transition: none; }
+  .compose-chevron          { transition: none; }
+  .status-dot               { transition: none; }
+  .health-banner            { animation: none; }
+  .sync-feedback            { animation: none; }
 }
