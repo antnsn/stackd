@@ -1,2 +1,3 @@
 # Ignore build artifacts and dev metadata
 .vite/
+/issues
