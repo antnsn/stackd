@@ -129,93 +129,95 @@ export function App() {
 
   return (
     <div class="app-shell">
-      <header class="app-header">
-        <h1 class="sr-only">stackd</h1>
-        <div class="app-header__brand">
+      <nav class="app-sidebar" aria-label="Main navigation">
+        <div class="sidebar-brand">
+          <h1 class="sr-only">stackd</h1>
           <img src="/logo.svg" alt="stackd" class="app-logo" width="118" height="44" />
         </div>
-        <div class="app-header__meta">
-          {infisical?.enabled && (
-            <span class="infisical-badge">Infisical · {infisical.env}</span>
-          )}
+        <div class="sidebar-nav">
+          <button
+            class={`sidebar-nav__btn ${page === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setPage('dashboard')}
+          >
+            Dashboard
+          </button>
+          <button
+            class={`sidebar-nav__btn ${page === 'settings' ? 'active' : ''}`}
+            onClick={() => setPage('settings')}
+          >
+            Settings
+          </button>
+        </div>
+        <div class="sidebar-footer">
           {freshnessLabel && (
             <span class="freshness-label" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
               {freshnessLabel}
             </span>
           )}
-          <nav class="app-nav" aria-label="Main navigation">
-            <button
-              class={`app-nav__btn ${page === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setPage('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              class={`app-nav__btn ${page === 'settings' ? 'active' : ''}`}
-              onClick={() => setPage('settings')}
-            >
-              Settings
-            </button>
-          </nav>
+          {infisical?.enabled && (
+            <span class="infisical-badge">Infisical · {infisical.env}</span>
+          )}
         </div>
-      </header>
+      </nav>
 
-      {error && (
-        <div class="error-banner" role="alert">
-          <span><span aria-hidden="true">⚠</span> Could not reach API: {error}</span>
-          <button onClick={fetchStatus}>Retry</button>
-        </div>
-      )}
-
-      {!error && problemStacks.length > 0 && (
-        <div class="health-banner health-banner--error" role="alert">
-          <span class="health-banner__icon" aria-hidden="true">⚠</span>
-          <span class="health-banner__text">
-            {problemStacks.length} stack{problemStacks.length !== 1 ? 's' : ''} need attention
-          </span>
-          <div class="health-banner__links">
-            {problemStacks.map(s => (
-              <button
-                key={`${s.repoName}/${s.name}`}
-                class="health-banner__link"
-                onClick={() => setSelectedStack(s)}
-              >
-                {s.repoName}/{s.name}
-              </button>
-            ))}
+      <div class="app-body">
+        {error && (
+          <div class="error-banner" role="alert">
+            <span><span aria-hidden="true">⚠</span> Could not reach API: {error}</span>
+            <button onClick={fetchStatus}>Retry</button>
           </div>
-        </div>
-      )}
+        )}
 
-      <main class="app-container">
-        {page === 'settings' ? (
-          <Settings />
-        ) : (
-          <>
-            <div class="grid-panel">
-              <AppGrid
-                repos={repos}
-                selectedStack={selectedStack}
-                syncingRepos={syncingRepos}
-                syncStatus={syncStatus}
-                onSelectStack={setSelectedStack}
-                onForceSync={handleForceSync}
-              />
+        {!error && problemStacks.length > 0 && (
+          <div class="health-banner health-banner--error" role="alert">
+            <span class="health-banner__icon" aria-hidden="true">⚠</span>
+            <span class="health-banner__text">
+              {problemStacks.length} stack{problemStacks.length !== 1 ? 's' : ''} need attention
+            </span>
+            <div class="health-banner__links">
+              {problemStacks.map(s => (
+                <button
+                  key={`${s.repoName}/${s.name}`}
+                  class="health-banner__link"
+                  onClick={() => setSelectedStack(s)}
+                >
+                  {s.repoName}/{s.name}
+                </button>
+              ))}
             </div>
-            {selectedStack && (
-              <div class="detail-panel">
-                <AppDetail
-                  stack={selectedStack}
-                  onClose={() => setSelectedStack(null)}
-                  onRefresh={fetchStatus}
+          </div>
+        )}
+
+        <main class="app-content">
+          {page === 'settings' ? (
+            <Settings />
+          ) : (
+            <>
+              <div class="grid-panel">
+                <AppGrid
+                  repos={repos}
+                  selectedStack={selectedStack}
+                  syncingRepos={syncingRepos}
+                  syncStatus={syncStatus}
+                  onSelectStack={setSelectedStack}
                   onForceSync={handleForceSync}
-                  isSyncing={syncingRepos.has(selectedStack?.repoName)}
                 />
               </div>
-            )}
-          </>
-        )}
-      </main>
+              {selectedStack && (
+                <div class="detail-panel">
+                  <AppDetail
+                    stack={selectedStack}
+                    onClose={() => setSelectedStack(null)}
+                    onRefresh={fetchStatus}
+                    onForceSync={handleForceSync}
+                    isSyncing={syncingRepos.has(selectedStack?.repoName)}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

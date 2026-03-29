@@ -1,28 +1,26 @@
 .app-shell {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
   height: 100dvh; /* accounts for iOS Safari toolbar */
   background: var(--bg-primary);
 }
 
-/* ── Header ──────────────────────────────────────── */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-6);
-  height: 60px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+/* ── Sidebar ─────────────────────────────────────── */
+.app-sidebar {
+  width: 200px;
   flex-shrink: 0;
-  gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  height: 100%;
 }
 
-.app-header__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+.sidebar-brand {
+  padding: var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .app-logo {
@@ -30,10 +28,55 @@
   width: auto;
 }
 
-.app-header__meta {
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+}
+
+.sidebar-nav__btn {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  min-height: 36px;
+}
+
+.sidebar-nav__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-nav__btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: var(--font-semibold);
+}
+
+.sidebar-nav__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sidebar-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .freshness-label {
@@ -55,6 +98,15 @@
   padding: 3px 10px;
   border-radius: var(--radius-md);
   letter-spacing: var(--tracking-wide);
+}
+
+/* ── App body (everything right of sidebar) ──────── */
+.app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* ── Error banner ────────────────────────────────── */
@@ -80,7 +132,6 @@
   cursor: pointer;
   font-size: var(--text-sm);
   font-family: var(--font-ui);
-  /* P1-1 fix: specific properties only, not transition: all */
   transition: background 0.1s;
 }
 
@@ -88,14 +139,13 @@
   background: color-mix(in srgb, var(--status-stopped) 28%, transparent);
 }
 
-/* P1-2 fix: focus-visible on error retry button */
 .error-banner button:focus-visible {
   outline: 2px solid var(--status-stopped);
   outline-offset: 2px;
 }
 
 /* ── Main layout ─────────────────────────────────── */
-.app-container {
+.app-content {
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -110,45 +160,84 @@
   background: var(--bg-secondary);
 }
 
-/* P1-6 fix: 14px translateY per spec, 150ms duration */
 .detail-panel {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   animation: fadeIn 0.15s ease-out;
+  background: var(--bg-secondary);
 }
 
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 1024px) {
-  .grid-panel {
-    width: clamp(260px, 28vw, 320px);
+  .app-sidebar {
+    width: 180px;
   }
 
-  .app-nav__btn {
+  .grid-panel {
+    width: clamp(240px, 28vw, 300px);
+  }
+
+  .sidebar-nav__btn {
     min-height: 40px;
     font-size: var(--text-sm);
   }
 }
 
 @media (max-width: 768px) {
-  /* ── Header: compact on narrow screens ── */
-  .app-header {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
     height: auto;
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 var(--space-4);
     min-height: 52px;
-    padding: var(--space-2) var(--space-4);
-    flex-wrap: wrap;
-    row-gap: 6px;
   }
 
-  .app-header__brand {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .app-header__meta {
+  .sidebar-brand {
+    padding: var(--space-2) 0;
+    border-bottom: none;
+    border-right: 1px solid var(--border-subtle);
+    padding-right: var(--space-4);
+    margin-right: var(--space-2);
     flex-shrink: 0;
-    gap: 6px;
+  }
+
+  .app-logo {
+    height: 32px;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex: 1;
+    padding: 0;
+    gap: var(--space-1);
+    align-items: center;
+  }
+
+  .sidebar-nav__btn {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    width: auto;
+  }
+
+  .sidebar-footer {
+    border-top: none;
+    border-left: 1px solid var(--border-subtle);
+    padding: 0 0 0 var(--space-3);
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+    flex-shrink: 0;
   }
 
   .infisical-badge {
@@ -156,14 +245,10 @@
     padding: 2px 8px;
   }
 
-  .app-nav__btn {
-    padding: 4px 10px;
-    font-size: var(--text-sm);
-  }
-
-  .app-container {
+  .app-content {
     flex-direction: column;
   }
+
   .grid-panel {
     width: 100%;
     flex: 1;
@@ -172,7 +257,8 @@
     border-right: none;
     overflow-y: auto;
   }
-  /* Detail panel overlays the full container on mobile */
+
+  /* Detail panel overlays the full content area on mobile */
   .detail-panel {
     position: absolute;
     top: 0;
@@ -186,41 +272,6 @@
 }
 
 /* prefers-reduced-motion guard is in index.css */
-
-/* ── Header nav (Dashboard | Settings) ───────────────── */
-.app-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.app-nav__btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--text-base);
-  padding: 5px 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-}
-
-.app-nav__btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.app-nav__btn.active {
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-weight: var(--font-semibold);
-}
-
-.app-nav__btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 
 /* ── Health banner ───────────────────────────────── */
 .health-banner {
