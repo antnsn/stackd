@@ -1,5 +1,31 @@
 import { useState, useMemo } from 'preact/hooks'
+import { formatRelative } from '../utils/time.js'
 import './RepoCardsView.css'
+
+const KNOWN_REGISTRIES = [
+  'lscr.io/linuxserver/',
+  'ghcr.io/',
+  'docker.io/library/',
+  'registry-1.docker.io/library/',
+  'index.docker.io/library/',
+]
+
+function shortImage(image) {
+  if (!image) return ''
+  for (const prefix of KNOWN_REGISTRIES) {
+    if (image.startsWith(prefix)) return image.slice(prefix.length)
+  }
+  return image
+}
+
+function ctrDotMod(container) {
+  const { status, health } = container
+  if (health === 'unhealthy')                      return 'degraded'
+  if (health === 'starting')                       return 'applying'
+  if (status === 'running')                        return 'running'
+  if (status === 'exited' || status === 'stopped') return 'stopped'
+  return 'unknown'
+}
 
 const SORT_OPTIONS = [
   { value: 'name-asc',    label: 'Name A–Z' },
@@ -111,15 +137,17 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
   )
 }
 
+const MAX_CTR_ROWS = 3
+
 function StackCard({ stack, onSelect, index }) {
   const rawStatus  = stack.status || 'unknown'
   // API returns 'ok' for healthy stacks — normalise to CSS modifier names
-  const STATUS_MAP = { ok: 'running' }
-  const status     = STATUS_MAP[rawStatus] || rawStatus
-  const containers = stack.containers || []
-  const running    = containers.filter(c => c.status === 'running').length
-  const total      = containers.length
-  const hasError   = !!stack.lastError
+  const STATUS_MAP  = { ok: 'running' }
+  const status      = STATUS_MAP[rawStatus] || rawStatus
+  const containers  = stack.containers || []
+  const visible     = containers.slice(0, MAX_CTR_ROWS)
+  const overflow    = containers.length - MAX_CTR_ROWS
+  const hasError    = !!stack.lastError
 
   return (
     <button
@@ -130,18 +158,40 @@ function StackCard({ stack, onSelect, index }) {
       <div class="stack-card-main__header">
         <span class="stack-card-main__dot" aria-hidden="true" />
         <span class="stack-card-main__name">{stack.name}</span>
+        <span class="stack-card-main__badge">{status}</span>
       </div>
-      <div class="stack-card-main__meta">
-        <span class="stack-card-main__badge">{rawStatus}</span>
-        {total > 0 && (
-          <span class="stack-card-main__ctrs">{running}/{total} ctr{total !== 1 ? 's' : ''}</span>
-        )}
-      </div>
+
+      {containers.length > 0 && (
+        <div class="stack-card-main__containers">
+          {visible.map(c => (
+            <ContainerRow key={c.id || c.name} container={c} />
+          ))}
+          {overflow > 0 && (
+            <div class="stack-card-main__overflow">+{overflow} more</div>
+          )}
+        </div>
+      )}
+
       {hasError && (
         <p class="stack-card-main__error" title={stack.lastError}>
-          {stack.lastError.slice(0, 90)}{stack.lastError.length > 90 ? '…' : ''}
+          {stack.lastError.slice(0, 80)}{stack.lastError.length > 80 ? '…' : ''}
         </p>
       )}
     </button>
+  )
+}
+
+function ContainerRow({ container }) {
+  const dotMod = ctrDotMod(container)
+  const image  = shortImage(container.image)
+  const age    = container.startedAt ? formatRelative(container.startedAt) : '—'
+
+  return (
+    <div class={`ctr-row ctr-row--${dotMod}`}>
+      <span class="ctr-row__dot" aria-hidden="true" />
+      <span class="ctr-row__name" title={container.name}>{container.name}</span>
+      <span class="ctr-row__image" title={container.image}>{image}</span>
+      <span class="ctr-row__age">{age}</span>
+    </div>
   )
 }
