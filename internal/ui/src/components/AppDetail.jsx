@@ -15,7 +15,7 @@ function classifyLog(text) {
 
 // ── AppDetail ─────────────────────────────────────────
 
-export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing }) {
+export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack, isSyncing, isApplying }) {
   const containers = stack.containers || []
   const [selectedContainer, setSelectedContainer] = useState(containers[0]?.name ?? null)
 
@@ -39,15 +39,15 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing })
           )}
         </div>
         <div class="detail-header__actions">
-          {onForceSync && (
+          {onApplyStack && (
             <button
-              class={`ctrl-btn detail-sync-btn${isSyncing ? ' ctrl-btn--loading' : ''}`}
-              onClick={() => onForceSync(stack.repoName)}
-              disabled={isSyncing}
-              aria-label={`Force sync ${stack?.repoName || 'repo'}`}
-              title="Pull latest git changes and re-apply compose"
+              class={`ctrl-btn detail-sync-btn${isApplying ? ' ctrl-btn--loading' : ''}`}
+              onClick={() => onApplyStack(stack.repoName, stack.name)}
+              disabled={isApplying}
+              aria-label={`Apply ${stack.name}`}
+              title="Re-apply this stack (docker compose up -d)"
             >
-              {isSyncing ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Sync
+              {isApplying ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Apply
             </button>
           )}
           <button

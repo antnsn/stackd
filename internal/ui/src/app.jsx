@@ -256,7 +256,9 @@ export function App() {
                 onClose={() => setSelectedStack(null)}
                 onRefresh={fetchStatus}
                 onForceSync={handleForceSync}
+                onApplyStack={handleApplyStack}
                 isSyncing={syncingRepos.has(selectedStack?.repoName)}
+                isApplying={applyingStacks.has(`${selectedStack?.repoName}/${selectedStack?.name}`)}
               />
             </div>
           ) : currentRepo ? (
