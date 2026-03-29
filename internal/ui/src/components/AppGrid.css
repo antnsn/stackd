@@ -407,6 +407,7 @@
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
+  color-scheme: dark;
   transition: border-color 0.1s, color 0.1s;
 }
 
