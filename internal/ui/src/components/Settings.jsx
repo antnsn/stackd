@@ -3,98 +3,7 @@ import './Settings.css'
 
 // ---- Repos tab -----------------------------------------------------------
 
-function ReposTab({ sshKeys }) {
-  const [repos, setRepos] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [modal, setModal] = useState(null) // null | 'add' | repo object
-
-  const loadRepos = () => {
-    setLoading(true)
-    fetch('/api/settings/repos')
-      .then(r => r.json())
-      .then(data => { setRepos(data); setLoading(false) })
-      .catch(e => { setError(e.message); setLoading(false) })
-  }
-
-  useEffect(loadRepos, [])
-
-  const deleteRepo = async (id, name) => {
-    if (!confirm(`Delete "${name}"? Active syncs will stop.`)) return
-    await fetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
-    loadRepos()
-  }
-
-  return (
-    <div class="settings-tab">
-      <div class="settings-tab__header">
-        <h2>Repositories</h2>
-        <button class="btn-primary" onClick={() => setModal('add')}>+ Add repo</button>
-      </div>
-      {error && <p class="settings-error">{error}</p>}
-      {loading ? (
-        <p class="settings-loading">Loading…</p>
-      ) : repos.length === 0 ? (
-        <div class="settings-empty">
-          <p>No repos configured.</p>
-          <p>Add a repository to start syncing Docker Compose stacks.</p>
-        </div>
-      ) : (
-        <div class="table-wrap">
-          <table class="settings-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>URL</th>
-                <th>Branch</th>
-                <th>Auth</th>
-                <th>Stacks dir</th>
-                <th>Interval</th>
-                <th>Status</th>
-                <th aria-label="Actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {repos.map(repo => (
-                <tr key={repo.id}>
-                  <td class="td-name">{repo.name}</td>
-                  <td class="td-url">{repo.url}</td>
-                  <td>{repo.branch}</td>
-                  <td>{repo.authType || 'none'}</td>
-                  <td class="td-mono">{repo.stacksDir || '.'}</td>
-                  <td>{repo.syncInterval}s</td>
-                  <td>
-                    <span class={`status-pill ${repo.enabled ? 'status-pill--on' : 'status-pill--off'}`}>
-                      {repo.enabled ? 'enabled' : 'disabled'}
-                    </span>
-                  </td>
-                  <td class="td-actions">
-                    <button class="btn-icon" onClick={() => setModal(repo)} aria-label="Edit repo">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61z"/></svg>
-                    </button>
-                    <button class="btn-icon btn-icon--danger" onClick={() => deleteRepo(repo.id, repo.name)} aria-label="Delete repo">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {modal && (
-        <RepoModal
-          repo={modal === 'add' ? null : modal}
-          sshKeys={sshKeys}
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); loadRepos() }}
-        />
-      )}
-    </div>
-  )
-}
-
-function RepoModal({ repo, sshKeys, onClose, onSaved }) {
+function RepoForm({ repo, sshKeys, onClose, onSaved }) {
   const isEdit = !!repo
   const [form, setForm] = useState({
     name: repo?.name || '',
@@ -134,78 +43,175 @@ function RepoModal({ repo, sshKeys, onClose, onSaved }) {
   }
 
   return (
-    <div class="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="modal-header">
-          <h3 id="modal-title">{isEdit ? 'Edit repository' : 'Add repository'}</h3>
-          <button class="btn-close" onClick={onClose} aria-label="Close">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          {error && <p class="settings-error">{error}</p>}
-          <div class="form-grid">
-            <label class="form-label">
-              Name
-              <input class="form-input" value={form.name} onInput={e => set('name', e.target.value)} placeholder="my-infra" />
-            </label>
-            <label class="form-label">
-              URL
-              <input class="form-input" value={form.url} onInput={e => set('url', e.target.value)} placeholder="git@github.com:user/repo.git" />
-            </label>
-            <label class="form-label">
-              Branch
-              <input class="form-input" value={form.branch} onInput={e => set('branch', e.target.value)} />
-            </label>
-            <label class="form-label">
-              Remote
-              <input class="form-input" value={form.remote} onInput={e => set('remote', e.target.value)} />
-            </label>
-            <label class="form-label">
-              Authentication
-              <select class="form-select" value={form.authType} onChange={e => set('authType', e.target.value)} name="authType">
-                <option value="none">None (public repo)</option>
-                <option value="ssh">SSH key</option>
-                <option value="pat">PAT (HTTPS)</option>
-              </select>
-            </label>
-            {form.authType === 'ssh' && (
-              <label class="form-label">
-                SSH key
-                <select class="form-select" value={form.sshKeyId} onChange={e => set('sshKeyId', e.target.value)} name="sshKeyId">
-                  <option value="">— select a key —</option>
-                  {sshKeys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
-                </select>
-              </label>
-            )}
-            {form.authType === 'pat' && (
-              <label class="form-label">
-                Personal Access Token
-                <input class="form-input" type="password" value={form.pat} onInput={e => set('pat', e.target.value)}
-                  placeholder={isEdit ? '(leave blank to keep current)' : 'ghp_…'} />
-              </label>
-            )}
-            <label class="form-label">
-              Stacks directory
-              <input class="form-input" value={form.stacksDir} onInput={e => set('stacksDir', e.target.value)} placeholder="." />
-            </label>
-            <label class="form-label">
-              Sync interval (seconds)
-              <input class="form-input" type="number" value={form.syncInterval} onInput={e => set('syncInterval', e.target.value)} min="10" />
-            </label>
-            <label class="form-label form-checkbox-row">
-              <input type="checkbox" checked={form.enabled} onChange={e => set('enabled', e.target.checked)} />
-              Enabled
-            </label>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-ghost" onClick={onClose}>Cancel</button>
-          <button class="btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
+    <div class="inline-form">
+      <div class="inline-form__title">{isEdit ? 'Edit repository' : 'Add repository'}</div>
+      {error && <p class="settings-error">{error}</p>}
+      <div class="form-grid">
+        <label class="form-label">
+          Name
+          <input class="form-input" value={form.name} onInput={e => set('name', e.target.value)} placeholder="my-infra" />
+        </label>
+        <label class="form-label">
+          URL
+          <input class="form-input" value={form.url} onInput={e => set('url', e.target.value)} placeholder="git@github.com:user/repo.git" />
+        </label>
+        <label class="form-label">
+          Branch
+          <input class="form-input" value={form.branch} onInput={e => set('branch', e.target.value)} />
+        </label>
+        <label class="form-label">
+          Remote
+          <input class="form-input" value={form.remote} onInput={e => set('remote', e.target.value)} />
+        </label>
+        <label class="form-label">
+          Authentication
+          <select class="form-select" value={form.authType} onChange={e => set('authType', e.target.value)} name="authType">
+            <option value="none">None (public repo)</option>
+            <option value="ssh">SSH key</option>
+            <option value="pat">PAT (HTTPS)</option>
+          </select>
+        </label>
+        {form.authType === 'ssh' && (
+          <label class="form-label">
+            SSH key
+            <select class="form-select" value={form.sshKeyId} onChange={e => set('sshKeyId', e.target.value)} name="sshKeyId">
+              <option value="">— select a key —</option>
+              {sshKeys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+            </select>
+          </label>
+        )}
+        {form.authType === 'pat' && (
+          <label class="form-label">
+            Personal Access Token
+            <input class="form-input" type="password" value={form.pat} onInput={e => set('pat', e.target.value)}
+              placeholder={isEdit ? '(leave blank to keep current)' : 'ghp_…'} />
+          </label>
+        )}
+        <label class="form-label">
+          Stacks directory
+          <input class="form-input" value={form.stacksDir} onInput={e => set('stacksDir', e.target.value)} placeholder="." />
+        </label>
+        <label class="form-label">
+          Sync interval (seconds)
+          <input class="form-input" type="number" value={form.syncInterval} onInput={e => set('syncInterval', e.target.value)} min="10" />
+        </label>
+        <label class="form-label form-checkbox-row">
+          <input type="checkbox" checked={form.enabled} onChange={e => set('enabled', e.target.checked)} />
+          Enabled
+        </label>
       </div>
+      <div class="form-actions">
+        <button class="btn-ghost" onClick={onClose}>Cancel</button>
+        <button class="btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ReposTab({ sshKeys }) {
+  const [repos, setRepos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [showForm, setShowForm] = useState(false) // false | 'add' | repo object
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // null | repo id
+
+  const loadRepos = () => {
+    setLoading(true)
+    fetch('/api/settings/repos')
+      .then(r => r.json())
+      .then(data => { setRepos(data); setLoading(false) })
+      .catch(e => { setError(e.message); setLoading(false) })
+  }
+
+  useEffect(loadRepos, [])
+
+  const deleteRepo = async (id) => {
+    await fetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
+    setDeleteConfirm(null)
+    loadRepos()
+  }
+
+  return (
+    <div class="settings-tab">
+      <div class="settings-tab__header">
+        <h2>Repositories</h2>
+        {!showForm && (
+          <button class="btn-primary" onClick={() => setShowForm('add')}>+ Add repo</button>
+        )}
+      </div>
+
+      {showForm && (
+        <RepoForm
+          repo={showForm === 'add' ? null : showForm}
+          sshKeys={sshKeys}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); loadRepos() }}
+        />
+      )}
+
+      {error && <p class="settings-error">{error}</p>}
+      {loading ? (
+        <p class="settings-loading">Loading…</p>
+      ) : repos.length === 0 ? (
+        <div class="settings-empty">
+          <p>No repos configured.</p>
+          <p>Add a repository to start syncing Docker Compose stacks.</p>
+        </div>
+      ) : (
+        <div class="table-wrap">
+          <table class="settings-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Branch</th>
+                <th>Auth</th>
+                <th>Stacks dir</th>
+                <th>Interval</th>
+                <th>Status</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {repos.map(repo => (
+                <tr key={repo.id}>
+                  <td class="td-name">{repo.name}</td>
+                  <td class="td-url">{repo.url}</td>
+                  <td>{repo.branch}</td>
+                  <td>{repo.authType || 'none'}</td>
+                  <td class="td-mono">{repo.stacksDir || '.'}</td>
+                  <td>{repo.syncInterval}s</td>
+                  <td>
+                    <span class={`status-pill ${repo.enabled ? 'status-pill--on' : 'status-pill--off'}`}>
+                      {repo.enabled ? 'enabled' : 'disabled'}
+                    </span>
+                  </td>
+                  <td class="td-actions">
+                    {deleteConfirm === repo.id ? (
+                      <span class="confirm-row">
+                        Delete {repo.name}?
+                        <button class="btn-ghost btn-sm btn-danger-confirm" onClick={() => deleteRepo(repo.id)}>Confirm</button>
+                        <button class="btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <>
+                        <button class="btn-icon" onClick={() => { setShowForm(repo); setDeleteConfirm(null) }} aria-label="Edit repo">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61z"/></svg>
+                        </button>
+                        <button class="btn-icon btn-icon--danger" onClick={() => setDeleteConfirm(repo.id)} aria-label="Delete repo">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -219,6 +225,7 @@ function SSHKeysTab({ onKeysChange }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // null | key id
 
   const loadKeys = () => {
     setLoading(true)
@@ -249,9 +256,9 @@ function SSHKeysTab({ onKeysChange }) {
     } catch (e) { setError(e.message); setSaving(false) }
   }
 
-  const deleteKey = async (id, name) => {
-    if (!confirm(`Delete "${name}"? Repos using it will fail to sync.`)) return
+  const deleteKey = async (id) => {
     await fetch(`/api/settings/ssh-keys/${id}`, { method: 'DELETE' })
+    setDeleteConfirm(null)
     loadKeys()
   }
 
@@ -300,9 +307,17 @@ function SSHKeysTab({ onKeysChange }) {
                   <span class="key-item__name">{k.name}</span>
                   <span class="key-item__pub mono">{k.publicKey}</span>
                 </div>
-                <button class="btn-icon btn-icon--danger" onClick={() => deleteKey(k.id, k.name)} aria-label={`Delete ${k.name}`}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
-                </button>
+                {deleteConfirm === k.id ? (
+                  <span class="confirm-row">
+                    Delete {k.name}?
+                    <button class="btn-ghost btn-sm btn-danger-confirm" onClick={() => deleteKey(k.id)}>Confirm</button>
+                    <button class="btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                  </span>
+                ) : (
+                  <button class="btn-icon btn-icon--danger" onClick={() => setDeleteConfirm(k.id)} aria-label={`Delete ${k.name}`}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM4.997 6.5a.75.75 0 1 0-1.5.006l.139 9.25a.75.75 0 0 0 1.5-.005zm5.006.006a.75.75 0 0 0-1.5-.006l-.139 9.25a.75.75 0 0 0 1.5.005z"/></svg>
+                  </button>
+                )}
               </div>
             ))}
           </div>
