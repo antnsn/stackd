@@ -870,3 +870,11 @@
   animation: infoReveal 0.25s var(--ease-out-quart) both;
   animation-delay: 220ms;
 }
+
+/* ── detail-header actions group (sync + close) ── */
+.detail-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}

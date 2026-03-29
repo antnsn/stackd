@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect, useMemo } from 'preact/hooks'
 import { AppGrid } from './components/AppGrid'
 import { AppDetail } from './components/AppDetail'
 import { Settings } from './components/Settings'
@@ -21,6 +21,14 @@ export function App() {
         setRepos(data.repos || [])
         setInfisical(data.infisical)
         setError(null)
+        const errorCount = (data.repos || [])
+          .flatMap(r => r.stacks || [])
+          .filter(s => {
+            if (s.status === 'error') return true
+            const containers = s.containers || []
+            return containers.length > 0 && !containers.every(c => c.status === 'running')
+          }).length
+        document.title = errorCount > 0 ? `(${errorCount}) stackd` : 'stackd'
       })
       .catch(err => setError(err.message))
   }
@@ -88,6 +96,18 @@ export function App() {
       })
   }
 
+  // Derive stacks with problems for the health banner
+  const problemStacks = useMemo(() => {
+    if (!repos || repos.length === 0) return []
+    return repos.flatMap(r =>
+      (r.stacks || []).filter(s => {
+        if (s.status === 'error') return true
+        const containers = s.containers || []
+        return containers.length > 0 && !containers.every(c => c.status === 'running')
+      }).map(s => ({ ...s, repoName: r.name }))
+    )
+  }, [repos])
+
   return (
     <div class="app-shell">
       <header class="app-header">
@@ -122,6 +142,31 @@ export function App() {
         </div>
       )}
 
+      {!error && (problemStacks.length > 0 ? (
+        <div class="health-banner health-banner--error" role="alert">
+          <span class="health-banner__icon" aria-hidden="true">⚠</span>
+          <span class="health-banner__text">
+            {problemStacks.length} stack{problemStacks.length !== 1 ? 's' : ''} need attention
+          </span>
+          <div class="health-banner__links">
+            {problemStacks.map(s => (
+              <button
+                key={`${s.repoName}/${s.name}`}
+                class="health-banner__link"
+                onClick={() => setSelectedStack(s)}
+              >
+                {s.repoName}/{s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : repos.length > 0 ? (
+        <div class="health-banner health-banner--ok" role="status">
+          <span class="health-banner__icon" aria-hidden="true">✓</span>
+          <span class="health-banner__text">All stacks running</span>
+        </div>
+      ) : null)}
+
       <div class="app-container">
         {page === 'settings' ? (
           <Settings />
@@ -143,6 +188,8 @@ export function App() {
                   stack={selectedStack}
                   onClose={() => setSelectedStack(null)}
                   onRefresh={fetchStatus}
+                  onForceSync={handleForceSync}
+                  isSyncing={syncingRepos.has(selectedStack?.repoName)}
                 />
               </div>
             )}

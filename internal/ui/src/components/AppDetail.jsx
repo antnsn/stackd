@@ -12,7 +12,7 @@ function classifyLog(text) {
 
 // ── AppDetail ─────────────────────────────────────────
 
-export function AppDetail({ stack, onClose, onRefresh }) {
+export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing }) {
   const containers = stack.containers || []
   const [selectedContainer, setSelectedContainer] = useState(containers[0]?.name ?? null)
 
@@ -35,14 +35,27 @@ export function AppDetail({ stack, onClose, onRefresh }) {
             </span>
           )}
         </div>
-        <button
-          class="close-btn close-btn--desktop"
-          onClick={onClose}
-          aria-label="Close detail panel"
-          title="Close"
-        >
-          ✕
-        </button>
+        <div class="detail-header__actions">
+          {onForceSync && (
+            <button
+              class={`ctrl-btn${isSyncing ? ' ctrl-btn--loading' : ''}`}
+              onClick={() => onForceSync(stack.repoName)}
+              disabled={isSyncing}
+              aria-label={`Force sync ${stack?.repoName || 'repo'}`}
+              title="Pull latest git changes and re-apply compose"
+            >
+              {isSyncing ? <span class="ctrl-spinner" aria-hidden="true" /> : '↻'} Sync
+            </button>
+          )}
+          <button
+            class="close-btn close-btn--desktop"
+            onClick={onClose}
+            aria-label="Close detail panel"
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div class="stack-meta-grid">
@@ -106,12 +119,23 @@ export function AppDetail({ stack, onClose, onRefresh }) {
 
 // ── ContainerDetail ───────────────────────────────────
 
+const getDefaultTab = (container, lastError) => {
+  if (lastError) return 'info'
+  if (container && (container.status === 'stopped' || container.status === 'exited')) return 'info'
+  return 'logs'
+}
+
 function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput, lastError }) {
-  const [tab, setTab] = useState('logs')
+  const [tab, setTab] = useState(() => getDefaultTab(container, lastError))
   const [actionState, setActionState] = useState(null)
   const [activeAction, setActiveAction] = useState(null)
   const [pendingStop, setPendingStop] = useState(false)
   const [stopTimer, setStopTimer] = useState(null)
+
+  // Reset to smart default whenever the user switches to a different container
+  useEffect(() => {
+    setTab(getDefaultTab(container, lastError))
+  }, [container.name])
 
   const isRunning = container.status === 'running'
   const isStopped = container.status === 'stopped' || container.status === 'exited'
