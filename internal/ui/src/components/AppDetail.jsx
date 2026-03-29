@@ -482,41 +482,51 @@ function TerminalPanel({ containerID }) {
   const termRef      = useRef(null)
   const wsRef        = useRef(null)
   const fitRef       = useRef(null)
+  const [connected, setConnected] = useState(false)
+  const [key, setKey] = useState(0) // bump to force reconnect
 
   useEffect(() => {
     if (!containerRef.current) return
+
+    let cleanup = () => {}
 
     // Lazy-load xterm to avoid paying bundle cost until the Shell tab is opened
     Promise.all([
       import('@xterm/xterm'),
       import('@xterm/addon-fit'),
     ]).then(([{ Terminal }, { FitAddon }]) => {
-      const term = new Terminal({
-        cursorBlink: true,
-        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-        fontSize: 13,
-        theme: {
-          background:  '#0d1117',
-          foreground:  '#e6edf3',
-          cursor:      '#6c63ff',
-          black:       '#0d1117',
-          brightBlack: '#484f58',
-          red:         '#f85149',
-          green:       '#3fb950',
-          yellow:      '#d29922',
-          blue:        '#58a6ff',
-          magenta:     '#bc8cff',
-          cyan:        '#39c5cf',
-          white:       '#b1bac4',
-          brightWhite: '#e6edf3',
-        },
-      })
-      const fit = new FitAddon()
-      term.loadAddon(fit)
-      term.open(containerRef.current)
-      fit.fit()
-      termRef.current = term
-      fitRef.current  = fit
+      // Reuse existing terminal instance across reconnects, create on first open
+      let term = termRef.current
+      if (!term) {
+        term = new Terminal({
+          cursorBlink: true,
+          fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+          fontSize: 13,
+          theme: {
+            background:  '#0d1117',
+            foreground:  '#e6edf3',
+            cursor:      '#6c63ff',
+            black:       '#0d1117',
+            brightBlack: '#484f58',
+            red:         '#f85149',
+            green:       '#3fb950',
+            yellow:      '#d29922',
+            blue:        '#58a6ff',
+            magenta:     '#bc8cff',
+            cyan:        '#39c5cf',
+            white:       '#b1bac4',
+            brightWhite: '#e6edf3',
+          },
+        })
+        const fit = new FitAddon()
+        term.loadAddon(fit)
+        term.open(containerRef.current)
+        fit.fit()
+        termRef.current = term
+        fitRef.current  = fit
+      } else {
+        fitRef.current?.fit()
+      }
 
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const ws = new WebSocket(`${proto}://${window.location.host}/api/exec/${containerID}`)
@@ -524,7 +534,7 @@ function TerminalPanel({ containerID }) {
       wsRef.current = ws
 
       ws.onopen = () => {
-        // Send initial size
+        setConnected(true)
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
       }
 
@@ -536,35 +546,60 @@ function TerminalPanel({ containerID }) {
         }
       }
 
-      ws.onclose = () => term.write('\r\n\x1b[90m[session closed]\x1b[0m\r\n')
+      ws.onclose = () => {
+        setConnected(false)
+        term.write('\r\n\x1b[90m[session closed]\x1b[0m\r\n')
+      }
       ws.onerror = () => term.write('\r\n\x1b[31m[connection error]\x1b[0m\r\n')
 
-      term.onData(data => {
+      const dataDispose = term.onData(data => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
       })
 
-      // Send resize on terminal resize
       const ro = new ResizeObserver(() => {
-        fit.fit()
+        fitRef.current?.fit()
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
         }
       })
       ro.observe(containerRef.current)
 
-      // Cleanup
-      return () => {
+      cleanup = () => {
         ro.disconnect()
+        dataDispose.dispose()
         ws.close()
-        term.dispose()
       }
     })
 
     return () => {
+      cleanup()
+    }
+  }, [containerID, key])
+
+  // Full dispose when component unmounts
+  useEffect(() => {
+    return () => {
       wsRef.current?.close()
       termRef.current?.dispose()
+      termRef.current = null
     }
-  }, [containerID])
+  }, [])
 
-  return <div ref={containerRef} class="terminal-panel" />
+  return (
+    <div class="terminal-wrapper">
+      <div class="terminal-toolbar">
+        <span class={`terminal-status ${connected ? 'terminal-status--connected' : 'terminal-status--disconnected'}`}>
+          {connected ? 'connected' : 'disconnected'}
+        </span>
+        <button
+          class="terminal-reconnect-btn"
+          onClick={() => { wsRef.current?.close(); setKey(k => k + 1) }}
+          title="Reconnect"
+        >
+          ↺ reconnect
+        </button>
+      </div>
+      <div ref={containerRef} class="terminal-panel" />
+    </div>
+  )
 }

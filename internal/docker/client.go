@@ -215,10 +215,14 @@ type ExecResult struct {
 	types.HijackedResponse
 }
 
-// ExecInteractive creates a PTY exec session in the container, trying /bin/bash
-// then falling back to /bin/sh. Returns the exec ID and attached hijacked conn.
+// ExecInteractive creates a PTY exec session in the container, probing shells
+// in order (bash → sh → ash) and using the first available one.
 func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*ExecResult, error) {
-	shell := "/bin/bash"
+	shell, err := c.detectShell(ctx, containerID)
+	if err != nil {
+		return nil, err
+	}
+
 	exec, err := c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
 		Cmd:          []string{shell},
 		AttachStdin:  true,
@@ -226,19 +230,8 @@ func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*Exec
 		AttachStderr: true,
 		Tty:          true,
 	})
-	if err != nil || exec.ID == "" {
-		// fallback to sh
-		shell = "/bin/sh"
-		exec, err = c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
-			Cmd:          []string{shell},
-			AttachStdin:  true,
-			AttachStdout: true,
-			AttachStderr: true,
-			Tty:          true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("exec create %s: %w", containerID, err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("exec create %s: %w", containerID, err)
 	}
 
 	resp, err := c.cli.ContainerExecAttach(ctx, exec.ID, dockertypes.ExecStartOptions{Tty: true})
@@ -246,6 +239,28 @@ func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*Exec
 		return nil, fmt.Errorf("exec attach %s: %w", containerID, err)
 	}
 	return &ExecResult{ExecID: exec.ID, HijackedResponse: resp}, nil
+}
+
+// detectShell probes candidate shells in order and returns the first available.
+func (c *Client) detectShell(ctx context.Context, containerID string) (string, error) {
+	candidates := []string{"/bin/bash", "/bin/sh", "/ash", "/busybox/sh"}
+	for _, shell := range candidates {
+		probe, err := c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
+			Cmd: []string{shell, "-c", "exit 0"},
+		})
+		if err != nil || probe.ID == "" {
+			continue
+		}
+		if err := c.cli.ContainerExecStart(ctx, probe.ID, dockertypes.ExecStartOptions{}); err != nil {
+			continue
+		}
+		insp, err := c.cli.ContainerExecInspect(ctx, probe.ID)
+		if err != nil || insp.ExitCode != 0 {
+			continue
+		}
+		return shell, nil
+	}
+	return "", fmt.Errorf("no usable shell found in container %s", containerID)
 }
 
 // ExecResize resizes the PTY for a running exec session.
