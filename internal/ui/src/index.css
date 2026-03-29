@@ -37,11 +37,11 @@ html, body, #app {
   /* ── Type scale ──────────────────────────────── */
   /* Base: 1rem = 10px (html at 62.5%). Scales with browser font preferences. */
   --text-xs:   1.1rem;  /* 11px — min readable; labels, timestamps, captions */
-  --text-sm:   1.2rem;  /* 12px — UI chrome: tabs, buttons, secondary text   */
-  --text-base: 1.3rem;  /* 13px — primary body, values, form inputs          */
-  --text-lg:   1.4rem;  /* 14px — card names, subheadings                    */
-  --text-xl:   1.5rem;  /* 15px — section headings, repo names               */
-  --text-2xl:  1.8rem;  /* 18px — panel titles, page headings                */
+  --text-sm:   1.2rem;  /* 12px — UI chrome: tabs, secondary text            */
+  --text-base: 1.4rem;  /* 14px — primary body, values, form inputs          */
+  --text-lg:   1.5rem;  /* 15px — card names, subheadings                    */
+  --text-xl:   1.6rem;  /* 16px — section headings, repo names               */
+  --text-2xl:  2.0rem;  /* 20px — panel titles, page headings                */
 
   /* ── Font weights ─────────────────────────────── */
   --font-normal:   400;
@@ -81,7 +81,7 @@ html, body, #app {
 
 body {
   font-family: var(--font-ui);
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   color: var(--text-primary);
   background: var(--bg-primary);
   line-height: 1.6;
