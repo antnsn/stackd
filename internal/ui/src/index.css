@@ -87,12 +87,52 @@ body {
   50%       { opacity: 0.6; }
 }
 
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tabFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logSlide {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes dotGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
+  50%       { box-shadow: 0 0 0 4px rgba(63, 185, 80, 0); }
+}
+
+@keyframes infoReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Easing tokens ───────────────────────────────── */
+:root {
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* ── Reduced motion ──────────────────────────────── */
-/* Target only the permitted animations; do not      */
-/* blanket-disable all transitions (breaks usability)*/
 @media (prefers-reduced-motion: reduce) {
-  .detail-panel       { animation: none; }
-  .sync-btn--spinning { animation: none; opacity: 0.65; }
+  .detail-panel             { animation: none; }
+  .sync-btn--spinning       { animation: none; opacity: 0.65; }
   .repo-status-dot--syncing { animation: none; }
   .stack-badge--applying    { animation: none; }
+  .stack-card               { animation: none !important; }
+  .tab-panel                { animation: none; }
+  .log-line                 { animation: none; }
+  .status-dot--running      { animation: none; }
+  .info-row, .info-section-divider, .info-output, .compose-viewer { animation: none; }
 }

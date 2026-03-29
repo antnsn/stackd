@@ -135,10 +135,11 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
 
       <div class="stack-list">
         {sortedStacks.length > 0 ? (
-          sortedStacks.map(stack => (
+          sortedStacks.map((stack, i) => (
             <StackCard
               key={stack.name}
               stack={stack}
+              index={i}
               isSelected={
                 selectedStack?.name === stack.name &&
                 selectedStack?.repoName === repo.name
@@ -154,7 +155,7 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
   )
 }
 
-function StackCard({ stack, isSelected, onSelect }) {
+function StackCard({ stack, isSelected, onSelect, index = 0 }) {
   const status = deriveStackStatus(stack)
   const running = (stack.containers || []).filter(c => c.status === 'running').length
   const total = (stack.containers || []).length
@@ -163,6 +164,7 @@ function StackCard({ stack, isSelected, onSelect }) {
     <button
       class={`stack-card stack-card--${status} ${isSelected ? 'stack-card--selected' : ''}`}
       onClick={onSelect}
+      style={{ '--card-i': Math.min(index, 8) }}
       aria-pressed={isSelected}
       aria-label={`${stack.name} — ${status}, ${running} of ${total} containers running`}
     >

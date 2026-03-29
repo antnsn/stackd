@@ -179,9 +179,9 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
           </button>
         ))}
       </div>
-      {tab === 'logs'    && <LogStream key={container.name} containerName={container.name} />}
-      {tab === 'env'     && <EnvVars envs={container.env} />}
-      {tab === 'info'    && <ContainerInfo container={container} lastOutput={lastOutput} lastError={lastError} repoName={repoName} stackName={stackName} />}
+      {tab === 'logs'    && <div class="tab-panel" key="logs"><LogStream key={container.name} containerName={container.name} /></div>}
+      {tab === 'env'     && <div class="tab-panel" key="env"><EnvVars envs={container.env} /></div>}
+      {tab === 'info'    && <div class="tab-panel" key="info"><ContainerInfo container={container} lastOutput={lastOutput} lastError={lastError} repoName={repoName} stackName={stackName} /></div>}
     </div>
   )
 }
