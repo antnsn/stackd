@@ -216,7 +216,6 @@
 
 .stack-card:hover {
   background: var(--bg-hover);
-  border-left-color: var(--border-color);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
@@ -290,6 +289,14 @@
   font-size: var(--text-xs);
   margin-top: 1px;
 }
+
+/* ── Stack card status colors ────────────────────── */
+.stack-card--running  { border-left-color: var(--status-running); }
+.stack-card--stopped  { border-left-color: var(--status-stopped);  background: color-mix(in srgb, var(--status-stopped)  5%, var(--bg-primary)); }
+.stack-card--error    { border-left-color: var(--status-error);    background: color-mix(in srgb, var(--status-error)    5%, var(--bg-primary)); }
+.stack-card--degraded { border-left-color: var(--status-degraded); background: color-mix(in srgb, var(--status-degraded) 4%, var(--bg-primary)); }
+.stack-card--applying { border-left-color: var(--status-applying); }
+.stack-card--unknown  { border-left-color: var(--status-unknown); }
 
 /* ── Stack badges ────────────────────────────────── */
 .stack-badge {
