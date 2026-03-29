@@ -297,7 +297,10 @@ func latestStartedAt(containers []state.ContainerDetail) time.Time {
 }
 
 
-func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
+func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
+if bus != nil {
+	bus.Publish(state.ActivityEvent{Type: "applying", Repo: repoName, Stack: stackName, Msg: "Applying " + stackName})
+}
 if store != nil {
 store.UpdateStack(state.StackState{
 Name:       stackName,
@@ -370,14 +373,20 @@ store.UpdateStack(st)
 
 if err != nil {
 slog.Error("stack apply failed", "stack", stackName, "err", err)
+if bus != nil {
+	bus.Publish(state.ActivityEvent{Type: "error", Repo: repoName, Stack: stackName, Msg: stackName + " failed"})
+}
 } else {
 slog.Info("stack applied successfully", "stack", stackName)
+if bus != nil {
+	bus.Publish(state.ActivityEvent{Type: "done", Repo: repoName, Stack: stackName, Msg: stackName + " ready"})
+}
 }
 }
 
 
 // runStacksSync discovers and applies all docker-compose stacks in stacksDir.
-func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
+func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
 	if stacksDir == "" {
 		return
 	}
@@ -404,12 +413,12 @@ func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state
 			slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", repoName)
 			continue
 		}
-		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient, infisicalCfg)
+		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient, infisicalCfg, bus)
 	}
 }
 
 // syncRepoFromDB clones or pulls the repo and applies stacks if the SHA changed.
-func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
+func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
 	repoName := repo.Name
 	start := time.Now()
 
@@ -492,9 +501,15 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 	}
 
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 120*time.Second)
+	if bus != nil {
+		bus.Publish(state.ActivityEvent{Type: "pulling", Repo: repoName, Msg: "Pulling " + repoName})
+	}
 	err := git.Clone(cloneCtx, repo.URL, destDir, opts)
 	cloneCancel()
 	if err != nil {
+		if bus != nil {
+			bus.Publish(state.ActivityEvent{Type: "error", Repo: repoName, Msg: repoName + " pull failed"})
+		}
 		recordError(fmt.Sprintf("git clone/pull failed: %v", err))
 		return
 	}
@@ -505,7 +520,7 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 
 	if newSHA != oldSHA || oldSHA == "" {
 		stacksDir := filepath.Join(destDir, repo.StacksDir)
-		runStacksSync(ctx, stacksDir, repoName, store, dockerClient, infisicalCfg)
+		runStacksSync(ctx, stacksDir, repoName, store, dockerClient, infisicalCfg, bus)
 	}
 
 	if store != nil {
@@ -634,6 +649,9 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	// Create activity bus early so startup syncs emit events.
+	activityBus := state.NewActivityBus()
+
 	// --- Startup stack scan ---
 	startupRepos, err := db.ListRepos(ctx, sqlDB)
 	if err != nil {
@@ -646,14 +664,28 @@ func main() {
 			if !repo.Enabled {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, startupInfCfg)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, startupInfCfg, activityBus)
 		}
 		refreshContainers(ctx, store, &dockerClient)
 	}
 
 	// --- Dashboard server (always enabled) ---
 	syncTrigger := make(chan string, 16)
-	srv := server.New(store, dockerClient, syncTrigger, port, sqlDB, cryptoKey)
+	srv := server.New(store, dockerClient, syncTrigger, port, sqlDB, cryptoKey, activityBus)
+
+	// Wire per-stack apply: look up stack in store, then call applyStack.
+	srv.SetApplyStack(func(repoName, stackName string) {
+		st, ok := store.GetStack(repoName, stackName)
+		if !ok {
+			return
+		}
+		settingsCtx, settingsCancel := context.WithTimeout(ctx, 5*time.Second)
+		infCfg := loadInfisicalFromDB(settingsCtx, sqlDB, cryptoKey)
+		settingsCancel()
+		applyStack(ctx, st.StackDir, stackName, repoName, store, dockerClient, infCfg, activityBus)
+		refreshContainers(ctx, store, &dockerClient)
+	})
+
 	go srv.Start(ctx)
 
 	ticker := time.NewTicker(syncInterval)
@@ -674,7 +706,7 @@ func main() {
 					slog.Info("skipping sync (backoff)", "repo", repo.Name)
 					continue
 				}
-				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, infisicalCfg)
+				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, infisicalCfg, activityBus)
 			}
 			refreshContainers(ctx, store, &dockerClient)
 		}()
@@ -730,7 +762,7 @@ func main() {
 			trigSettingsCancel()
 			for _, repo := range repos {
 				if repo.Name == repoName {
-					syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, trigInfCfg)
+					syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, trigInfCfg, activityBus)
 					break
 				}
 			}

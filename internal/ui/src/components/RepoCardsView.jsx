@@ -38,7 +38,7 @@ const SORT_OPTIONS = [
 
 const STATUS_ORDER = { error: 0, stopped: 1, exited: 1, applying: 2, ok: 3, running: 3, unknown: 4 }
 
-export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStatus }) {
+export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStatus, onApplyStack, applyingStacks }) {
   const [search, setSearch]   = useState('')
   const [sort, setSort]       = useState('name-asc')
 
@@ -118,6 +118,8 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
               key={stack.name}
               stack={stack}
               onSelect={() => onSelectStack({ ...stack, repoName: repo.name })}
+              onApply={e => { e.stopPropagation(); onApplyStack?.(repo.name, stack.name) }}
+              isApplying={applyingStacks?.has(`${repo.name}/${stack.name}`)}
               index={i}
             />
           ))}
@@ -176,7 +178,7 @@ function SortDropdown({ value, onChange, options }) {
 
 const MAX_CTR_ROWS = 3
 
-function StackCard({ stack, onSelect, index }) {
+function StackCard({ stack, onSelect, onApply, isApplying, index }) {
   const rawStatus  = stack.status || 'unknown'
   // API returns 'ok' for healthy stacks — normalise to CSS modifier names
   const STATUS_MAP  = { ok: 'running' }
@@ -222,6 +224,16 @@ function StackCard({ stack, onSelect, index }) {
           {stack.lastError.slice(0, 80)}{stack.lastError.length > 80 ? '…' : ''}
         </p>
       )}
+
+      <button
+        class={`stack-card-apply${isApplying ? ' stack-card-apply--spinning' : ''}`}
+        onClick={onApply}
+        disabled={isApplying}
+        aria-label={`Apply ${stack.name}`}
+        title="Force apply (docker compose up -d)"
+      >
+        <span aria-hidden="true">↻</span>
+      </button>
     </button>
   )
 }
@@ -237,6 +249,56 @@ function ContainerRow({ container }) {
       <span class="ctr-row__name" title={container.name}>{container.name}</span>
       <span class="ctr-row__image" title={container.image}>{image}</span>
       <span class="ctr-row__age">{age}</span>
+    </div>
+  )
+}
+
+// ── ActivityFeed ──────────────────────────────────────────────────────────────
+
+const ACTIVITY_ICONS = { pulling: '⇩', applying: '↻', done: '✓', error: '✕' }
+const MAX_EVENTS = 12
+
+export function ActivityFeed() {
+  const [events, setEvents] = useState([])
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const es = new EventSource('/api/activity')
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data)
+        const id = Date.now() + Math.random()
+        setEvents(prev => [{ ...ev, id, ts: Date.now() }, ...prev].slice(0, MAX_EVENTS))
+        setVisible(true)
+        // Auto-dismiss "done" events after 4s if no new events follow
+        if (ev.type === 'done') {
+          setTimeout(() => {
+            setEvents(prev => prev.filter(p => p.id !== id))
+          }, 4000)
+        }
+      } catch {}
+    }
+    es.onerror = () => {}
+    return () => es.close()
+  }, [])
+
+  if (!visible || events.length === 0) return null
+
+  return (
+    <div class="activity-feed" role="log" aria-live="polite" aria-label="Activity">
+      <div class="activity-feed__header">
+        <span class="activity-feed__title">Activity</span>
+        <button class="activity-feed__close" onClick={() => setVisible(false)} aria-label="Dismiss">×</button>
+      </div>
+      <ul class="activity-feed__list">
+        {events.map(ev => (
+          <li key={ev.id} class={`activity-event activity-event--${ev.type}`}>
+            <span class="activity-event__icon" aria-hidden="true">{ACTIVITY_ICONS[ev.type] || '·'}</span>
+            <span class="activity-event__msg">{ev.msg}</span>
+            {ev.stack && <span class="activity-event__repo">{ev.repo}</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

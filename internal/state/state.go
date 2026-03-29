@@ -1,9 +1,60 @@
 package state
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
+
+// ActivityEvent is a single live activity notification.
+type ActivityEvent struct {
+	Type  string `json:"type"`  // "pulling", "applying", "done", "error"
+	Repo  string `json:"repo"`
+	Stack string `json:"stack,omitempty"` // empty for repo-level events
+	Msg   string `json:"msg"`
+}
+
+// ActivityBus fan-outs activity events to all registered SSE subscribers.
+type ActivityBus struct {
+	mu   sync.Mutex
+	subs map[chan []byte]struct{}
+}
+
+func NewActivityBus() *ActivityBus {
+	return &ActivityBus{subs: make(map[chan []byte]struct{})}
+}
+
+// Publish sends an event to all current subscribers.
+func (b *ActivityBus) Publish(ev ActivityEvent) {
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.subs {
+		select {
+		case ch <- data:
+		default: // drop if subscriber is slow
+		}
+	}
+}
+
+// Subscribe returns a channel that receives SSE-formatted event bytes.
+// Call the returned cancel func to unsubscribe and close the channel.
+func (b *ActivityBus) Subscribe() (ch chan []byte, cancel func()) {
+	ch = make(chan []byte, 32)
+	b.mu.Lock()
+	b.subs[ch] = struct{}{}
+	b.mu.Unlock()
+	cancel = func() {
+		b.mu.Lock()
+		delete(b.subs, ch)
+		b.mu.Unlock()
+		close(ch)
+	}
+	return ch, cancel
+}
 
 type SyncStatus string
 

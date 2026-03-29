@@ -267,6 +267,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  position: relative;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -443,4 +444,147 @@
 @media (prefers-reduced-motion: reduce) {
   .stack-card-main { animation: none; transition: none; }
   .repo-sync-btn--spinning .repo-sync-btn__icon { animation: none; }
+}
+
+/* ── Apply button ───────────────────────────────────────────────────── */
+
+.stack-card-apply {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  bottom: var(--space-2);
+  right: var(--space-2);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  z-index: 1;
+}
+
+.stack-card-main:hover .stack-card-apply,
+.stack-card-apply:focus-visible {
+  opacity: 1;
+}
+
+.stack-card-apply:hover {
+  color: var(--indigo);
+  border-color: var(--indigo);
+}
+
+.stack-card-apply--spinning span {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Activity feed ──────────────────────────────────────────────────── */
+
+.activity-feed {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 900;
+  width: 280px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 40%, transparent);
+  overflow: hidden;
+  animation: feed-in 0.2s ease;
+}
+
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.activity-feed__header {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.activity-feed__title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.activity-feed__close {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.activity-feed__close:hover { color: var(--text-primary); }
+
+.activity-feed__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.activity-event {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  animation: event-in 0.15s ease;
+}
+
+@keyframes event-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.activity-event__icon {
+  font-size: 11px;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.activity-event--pulling  .activity-event__icon { color: var(--blue); }
+.activity-event--applying .activity-event__icon { color: var(--indigo); animation: spin 1s linear infinite; display: inline-block; }
+.activity-event--done     .activity-event__icon { color: var(--green); }
+.activity-event--error    .activity-event__icon { color: var(--status-error); }
+
+.activity-event__msg {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-event--done  .activity-event__msg { color: var(--text-secondary); }
+.activity-event--error .activity-event__msg { color: var(--status-error); }
+
+.activity-event__repo {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
 }

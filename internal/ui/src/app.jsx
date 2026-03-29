@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'preact/hooks'
 import { AppDetail } from './components/AppDetail'
-import { RepoCardsView } from './components/RepoCardsView'
+import { RepoCardsView, ActivityFeed } from './components/RepoCardsView'
 import { Settings } from './components/Settings'
 import { formatRelative } from './utils/time.js'
 import './app.css'
@@ -14,6 +14,7 @@ export function App() {
   const [error, setError] = useState(null)
   const [syncingRepos, setSyncingRepos] = useState(new Set())
   const [syncStatus, setSyncStatus] = useState({})
+  const [applyingStacks, setApplyingStacks] = useState(new Set())
 
   const [lastFetched, setLastFetched] = useState(null)
   const [now, setNow] = useState(Date.now())
@@ -115,6 +116,22 @@ export function App() {
         setTimeout(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), 4000)
       })
   }
+
+  const handleApplyStack = useCallback((repoName, stackName) => {
+    const key = `${repoName}/${stackName}`
+    setApplyingStacks(prev => new Set([...prev, key]))
+    fetch(`/api/stacks/${repoName}/${stackName}/apply`, { method: 'POST' })
+      .then(() => {
+        // Activity feed shows progress; clear spinner after a reasonable delay
+        setTimeout(() => {
+          setApplyingStacks(prev => { const n = new Set(prev); n.delete(key); return n })
+          fetchStatus()
+        }, 8000)
+      })
+      .catch(() => {
+        setApplyingStacks(prev => { const n = new Set(prev); n.delete(key); return n })
+      })
+  }, [fetchStatus])
 
   // Derive stacks with problems for the health banner
   const problemStacks = useMemo(() => {
@@ -249,6 +266,8 @@ export function App() {
               isSyncing={syncingRepos.has(currentRepo.name)}
               onSync={handleForceSync}
               syncStatus={syncStatus[currentRepo.name]}
+              onApplyStack={handleApplyStack}
+              applyingStacks={applyingStacks}
             />
           ) : (
             <div class="empty-detail">
@@ -262,6 +281,7 @@ export function App() {
           )}
         </main>
       </div>
+      <ActivityFeed />
     </div>
   )
 }

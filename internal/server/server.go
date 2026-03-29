@@ -27,20 +27,22 @@ import (
 
 // Server is the dashboard HTTP server.
 type Server struct {
-	store       *state.Store
-	docker      *docker.Client // may be nil if Docker is unavailable
-	syncTrigger chan<- string
-	addr        string
-	mux         *http.ServeMux
-	handler     http.Handler // final handler with all middlewares applied
-	syncLimiter *rateLimiter
-	db          *sql.DB
-	cryptoKey   []byte
+	store        *state.Store
+	docker       *docker.Client // may be nil if Docker is unavailable
+	syncTrigger  chan<- string
+	addr         string
+	mux          *http.ServeMux
+	handler      http.Handler // final handler with all middlewares applied
+	syncLimiter  *rateLimiter
+	db           *sql.DB
+	cryptoKey    []byte
+	activity     *state.ActivityBus
+	applyStack   func(repo, stack string) // called by per-stack apply endpoint
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
 // dockerClient may be nil; log endpoints will return 503 in that case.
-func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- string, port int, sqlDB *sql.DB, cryptoKey []byte) *Server {
+func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- string, port int, sqlDB *sql.DB, cryptoKey []byte, activity *state.ActivityBus) *Server {
 	s := &Server{
 		store:       store,
 		docker:      dockerClient,
@@ -49,6 +51,7 @@ func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- str
 		mux:         http.NewServeMux(),
 		db:          sqlDB,
 		cryptoKey:   cryptoKey,
+		activity:    activity,
 	}
 	s.registerRoutes()
 
@@ -135,6 +138,12 @@ func (s *Server) registerRoutes() {
 	// GET /api/logs/{container} — SSE stream of Docker logs
 	s.mux.HandleFunc("GET /api/logs/{container}", s.handleLogs)
 	s.mux.HandleFunc("GET /api/exec/{container}", s.handleExec)
+
+	// GET /api/activity — SSE stream of live sync/apply activity events
+	s.mux.HandleFunc("GET /api/activity", s.handleActivity)
+
+	// POST /api/stacks/{repo}/{stack}/apply — force-apply a single stack
+	s.mux.HandleFunc("POST /api/stacks/{repo}/{stack}/apply", s.handleApplyStack)
 
 	// GET /api/stacks/{repo}/{stack}/compose — raw compose file content
 	s.mux.HandleFunc("GET /api/stacks/{repo}/{stack}/compose", s.handleComposeFile)
@@ -510,6 +519,66 @@ func (s *sseWriter) Write(p []byte) (int, error) {
 	}
 	s.flusher.Flush()
 	return len(p), nil
+}
+
+// ── Activity SSE ──────────────────────────────────────────────────────────────
+
+// SetApplyStack wires the per-stack apply callback (called in a goroutine by handleApplyStack).
+func (s *Server) SetApplyStack(fn func(repo, stack string)) {
+	s.applyStack = fn
+}
+
+// handleActivity streams live activity events as SSE.
+// GET /api/activity
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher.Flush()
+
+	ch, cancel := s.activity.Subscribe()
+	defer cancel()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case data, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// handleApplyStack force-applies a single stack.
+// POST /api/stacks/{repo}/{stack}/apply
+func (s *Server) handleApplyStack(w http.ResponseWriter, r *http.Request) {
+	repo := r.PathValue("repo")
+	stack := r.PathValue("stack")
+	if repo == "" || stack == "" {
+		http.Error(w, "missing repo or stack", http.StatusBadRequest)
+		return
+	}
+	if _, ok := s.store.GetStack(repo, stack); !ok {
+		http.Error(w, "stack not found", http.StatusNotFound)
+		return
+	}
+	if s.applyStack == nil {
+		http.Error(w, "apply not configured", http.StatusServiceUnavailable)
+		return
+	}
+	go s.applyStack(repo, stack)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "applying"})
 }
 
 // ── WebSocket exec ────────────────────────────────────────────────────────────
