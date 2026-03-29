@@ -99,6 +99,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-2);
+  height: 32px;
   flex: 1;
   max-width: 320px;
   transition: border-color 0.1s;
@@ -171,7 +172,7 @@
   font-size: var(--text-sm);
   padding: 4px var(--space-3);
   cursor: pointer;
-  min-height: 32px;
+  height: 32px;
   transition: border-color 0.1s, color 0.1s;
   white-space: nowrap;
 }
