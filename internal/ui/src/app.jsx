@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'preact/hooks'
 import { AppDetail } from './components/AppDetail'
 import { RepoCardsView } from './components/RepoCardsView'
 import { Settings } from './components/Settings'
+import { formatRelative } from './utils/time.js'
 import './app.css'
 
 export function App() {
@@ -156,17 +157,22 @@ export function App() {
           <nav class="repo-nav" aria-label="Repositories">
             <span class="repo-nav__label">Repos</span>
             {repos.map(repo => {
+              const isActive = selectedRepo === repo.name
               const hasError = (repo.stacks || []).some(s =>
                 s.status === 'error' || (s.containers || []).some(c => c.status !== 'running' && c.status !== 'unknown')
               )
+              const syncAge = isActive && repo.lastSync ? formatRelative(repo.lastSync) : null
               return (
                 <button
                   key={repo.name}
-                  class={`repo-nav__item${selectedRepo === repo.name ? ' active' : ''}`}
+                  class={`repo-nav__item${isActive ? ' active' : ''}`}
                   onClick={() => { setSelectedRepo(repo.name); setSelectedStack(null); setPage('dashboard') }}
                 >
                   <span class={`repo-nav__dot repo-nav__dot--${hasError ? 'error' : 'ok'}`} aria-hidden="true" />
-                  <span class="repo-nav__name">{repo.name}</span>
+                  <span class="repo-nav__body">
+                    <span class="repo-nav__name">{repo.name}</span>
+                    {syncAge && <span class="repo-nav__sync-age">synced {syncAge}</span>}
+                  </span>
                 </button>
               )
             })}
