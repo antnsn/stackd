@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-6);
-  height: 52px;
+  height: 60px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
@@ -25,9 +25,8 @@
   gap: var(--space-3);
 }
 
-/* P1-14 fix: 36px (was 32px) */
 .app-logo {
-  height: 36px;
+  height: 44px;
   width: auto;
 }
 

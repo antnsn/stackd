@@ -113,7 +113,7 @@ export function App() {
       <header class="app-header">
         <h1 class="sr-only">stackd</h1>
         <div class="app-header__brand">
-          <img src="/logo.svg" alt="stackd" class="app-logo" width="97" height="36" />
+          <img src="/logo.svg" alt="stackd" class="app-logo" width="118" height="44" />
         </div>
         <div class="app-header__meta">
           {infisical?.enabled && (
