@@ -38,7 +38,7 @@ const SORT_OPTIONS = [
 
 const STATUS_ORDER = { error: 0, stopped: 1, exited: 1, applying: 2, ok: 3, running: 3, unknown: 4 }
 
-export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStatus, onApplyStack, applyingStacks }) {
+export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStatus }) {
   const [search, setSearch]   = useState('')
   const [sort, setSort]       = useState('name-asc')
 
@@ -118,8 +118,6 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
               key={stack.name}
               stack={stack}
               onSelect={() => onSelectStack({ ...stack, repoName: repo.name })}
-              onApply={e => { e.stopPropagation(); onApplyStack?.(repo.name, stack.name) }}
-              isApplying={applyingStacks?.has(`${repo.name}/${stack.name}`)}
               index={i}
             />
           ))}
@@ -178,7 +176,7 @@ function SortDropdown({ value, onChange, options }) {
 
 const MAX_CTR_ROWS = 3
 
-function StackCard({ stack, onSelect, onApply, isApplying, index }) {
+function StackCard({ stack, onSelect, index }) {
   const rawStatus  = stack.status || 'unknown'
   // API returns 'ok' for healthy stacks — normalise to CSS modifier names
   const STATUS_MAP  = { ok: 'running' }
@@ -224,16 +222,6 @@ function StackCard({ stack, onSelect, onApply, isApplying, index }) {
           {stack.lastError.slice(0, 80)}{stack.lastError.length > 80 ? '…' : ''}
         </p>
       )}
-
-      <button
-        class={`stack-card-apply${isApplying ? ' stack-card-apply--spinning' : ''}`}
-        onClick={onApply}
-        disabled={isApplying}
-        aria-label={`Apply ${stack.name}`}
-        title="Force apply (docker compose up -d)"
-      >
-        <span aria-hidden="true">↻</span>
-      </button>
     </button>
   )
 }
