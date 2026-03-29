@@ -7,12 +7,10 @@ import (
 	"strings"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // ContainerDetail holds runtime information about a single container.
@@ -52,17 +50,17 @@ func (c *Client) Close() error {
 
 // GetContainerStatus returns the running state of a container by name.
 func (c *Client) GetContainerStatus(ctx context.Context, name string) (ContainerStatus, error) {
-	ctrs, err := c.cli.ContainerList(ctx, dockertypes.ListOptions{
+	result, err := c.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("name", name)),
+		Filters: make(client.Filters).Add("name", name),
 	})
 	if err != nil {
 		return StatusNotFound, fmt.Errorf("list containers: %w", err)
 	}
-	for _, ct := range ctrs {
+	for _, ct := range result.Items {
 		for _, n := range ct.Names {
 			if n == "/"+name || n == name {
-				if ct.State == "running" {
+				if ct.State == container.StateRunning {
 					return StatusRunning, nil
 				}
 				return StatusStopped, nil
@@ -75,20 +73,18 @@ func (c *Client) GetContainerStatus(ctx context.Context, name string) (Container
 // StreamLogs streams container logs to w until ctx is cancelled or the container stops.
 // Handles Docker's multiplexed stdout/stderr framing via stdcopy.
 func (c *Client) StreamLogs(ctx context.Context, name string, w io.Writer) error {
-	rc, err := c.cli.ContainerLogs(ctx, name, dockertypes.LogsOptions{
+	result, err := c.cli.ContainerLogs(ctx, name, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
 		Tail:       "100",
-		Timestamps: false,
 	})
 	if err != nil {
 		return fmt.Errorf("container logs %q: %w", name, err)
 	}
-	defer rc.Close()
+	defer result.Close()
 
-	// stdcopy demultiplexes the Docker stream format; both streams go to w.
-	_, err = stdcopy.StdCopy(w, w, rc)
+	_, err = stdcopy.StdCopy(w, w, result)
 	if err != nil && ctx.Err() == nil {
 		return fmt.Errorf("read logs: %w", err)
 	}
@@ -96,22 +92,21 @@ func (c *Client) StreamLogs(ctx context.Context, name string, w io.Writer) error
 }
 
 // ListStackContainerDetails returns runtime details for all containers belonging
-// to the compose project whose directory is stackDir. It calls ContainerInspect
-// per container to populate StartedAt. Context cancellation is respected.
+// to the compose project whose directory is stackDir.
 func (c *Client) ListStackContainerDetails(ctx context.Context, stackDir string) ([]ContainerDetail, error) {
 	parts := strings.Split(strings.TrimRight(stackDir, "/"), "/")
 	projectName := strings.ToLower(parts[len(parts)-1])
 
-	ctrs, err := c.cli.ContainerList(ctx, dockertypes.ListOptions{
+	result, err := c.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+projectName)),
+		Filters: make(client.Filters).Add("label", "com.docker.compose.project="+projectName),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list stack containers: %w", err)
 	}
 
-	details := make([]ContainerDetail, 0, len(ctrs))
-	for _, ct := range ctrs {
+	details := make([]ContainerDetail, 0, len(result.Items))
+	for _, ct := range result.Items {
 		if ctx.Err() != nil {
 			return details, ctx.Err()
 		}
@@ -119,25 +114,27 @@ func (c *Client) ListStackContainerDetails(ctx context.Context, stackDir string)
 		if len(ct.Names) > 0 {
 			name = strings.TrimPrefix(ct.Names[0], "/")
 		}
+		id := ct.ID
+		if len(id) > 12 {
+			id = id[:12]
+		}
 		d := ContainerDetail{
-			ID:     ct.ID,
+			ID:     id,
 			Name:   name,
 			Image:  ct.Image,
-			Status: ct.State,
+			Status: string(ct.State),
 		}
-		if len(d.ID) > 12 {
-			d.ID = d.ID[:12]
-		}
-		info, err := c.cli.ContainerInspect(ctx, ct.ID)
+		insp, err := c.cli.ContainerInspect(ctx, ct.ID, client.ContainerInspectOptions{})
 		if err == nil {
-			if info.State != nil {
-				d.StartedAt, _ = time.Parse(time.RFC3339Nano, info.State.StartedAt)
+			ctr := insp.Container
+			if ctr.State != nil {
+				d.StartedAt, _ = time.Parse(time.RFC3339Nano, ctr.State.StartedAt)
 			}
-			if info.Config != nil {
-				d.Env = maskEnvVars(info.Config.Env)
+			if ctr.Config != nil {
+				d.Env = maskEnvVars(ctr.Config.Env)
 			}
-			if info.NetworkSettings != nil {
-				d.Ports = formatPorts(info.NetworkSettings.Ports)
+			if ctr.NetworkSettings != nil {
+				d.Ports = formatPorts(ctr.NetworkSettings.Ports)
 			}
 		}
 		details = append(details, d)
@@ -170,16 +167,16 @@ func maskEnvVars(envs []string) []string {
 	return result
 }
 
-func formatPorts(portMap nat.PortMap) []string {
+func formatPorts(portMap network.PortMap) []string {
 	var ports []string
 	for port, bindings := range portMap {
 		for _, b := range bindings {
 			if b.HostPort != "" {
-				ports = append(ports, b.HostPort+":"+port.Port()+"/"+port.Proto())
+				ports = append(ports, b.HostPort+":"+fmt.Sprintf("%d", port.Num())+"/"+string(port.Proto()))
 			}
 		}
 		if len(bindings) == 0 {
-			ports = append(ports, port.Port()+"/"+port.Proto())
+			ports = append(ports, fmt.Sprintf("%d", port.Num())+"/"+string(port.Proto()))
 		}
 	}
 	return ports
@@ -187,7 +184,7 @@ func formatPorts(portMap nat.PortMap) []string {
 
 // StartContainer starts a stopped container by name.
 func (c *Client) StartContainer(ctx context.Context, name string) error {
-	if err := c.cli.ContainerStart(ctx, name, dockertypes.StartOptions{}); err != nil {
+	if _, err := c.cli.ContainerStart(ctx, name, client.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("StartContainer %s: %w", name, err)
 	}
 	return nil
@@ -195,7 +192,7 @@ func (c *Client) StartContainer(ctx context.Context, name string) error {
 
 // StopContainer stops a running container by name.
 func (c *Client) StopContainer(ctx context.Context, name string) error {
-	if err := c.cli.ContainerStop(ctx, name, dockertypes.StopOptions{}); err != nil {
+	if _, err := c.cli.ContainerStop(ctx, name, client.ContainerStopOptions{}); err != nil {
 		return fmt.Errorf("StopContainer %s: %w", name, err)
 	}
 	return nil
@@ -203,7 +200,7 @@ func (c *Client) StopContainer(ctx context.Context, name string) error {
 
 // RestartContainer restarts a container by name.
 func (c *Client) RestartContainer(ctx context.Context, name string) error {
-	if err := c.cli.ContainerRestart(ctx, name, dockertypes.StopOptions{}); err != nil {
+	if _, err := c.cli.ContainerRestart(ctx, name, client.ContainerRestartOptions{}); err != nil {
 		return fmt.Errorf("RestartContainer %s: %w", name, err)
 	}
 	return nil
@@ -212,7 +209,7 @@ func (c *Client) RestartContainer(ctx context.Context, name string) error {
 // ExecResult holds the exec ID and attached streams for an interactive exec session.
 type ExecResult struct {
 	ExecID string
-	types.HijackedResponse
+	client.HijackedResponse
 }
 
 // ExecInteractive creates a PTY exec session in the container, probing shells
@@ -223,38 +220,38 @@ func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*Exec
 		return nil, err
 	}
 
-	exec, err := c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
+	exec, err := c.cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 		Cmd:          []string{shell},
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          true,
+		TTY:          true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("exec create %s: %w", containerID, err)
 	}
 
-	resp, err := c.cli.ContainerExecAttach(ctx, exec.ID, dockertypes.ExecStartOptions{Tty: true})
+	resp, err := c.cli.ExecAttach(ctx, exec.ID, client.ExecAttachOptions{TTY: true})
 	if err != nil {
 		return nil, fmt.Errorf("exec attach %s: %w", containerID, err)
 	}
-	return &ExecResult{ExecID: exec.ID, HijackedResponse: resp}, nil
+	return &ExecResult{ExecID: exec.ID, HijackedResponse: resp.HijackedResponse}, nil
 }
 
 // detectShell probes candidate shells in order and returns the first available.
 func (c *Client) detectShell(ctx context.Context, containerID string) (string, error) {
 	candidates := []string{"/bin/bash", "/bin/sh", "/ash", "/busybox/sh"}
 	for _, shell := range candidates {
-		probe, err := c.cli.ContainerExecCreate(ctx, containerID, dockertypes.ExecOptions{
+		probe, err := c.cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 			Cmd: []string{shell, "-c", "exit 0"},
 		})
 		if err != nil || probe.ID == "" {
 			continue
 		}
-		if err := c.cli.ContainerExecStart(ctx, probe.ID, dockertypes.ExecStartOptions{}); err != nil {
+		if _, err := c.cli.ExecStart(ctx, probe.ID, client.ExecStartOptions{}); err != nil {
 			continue
 		}
-		insp, err := c.cli.ContainerExecInspect(ctx, probe.ID)
+		insp, err := c.cli.ExecInspect(ctx, probe.ID, client.ExecInspectOptions{})
 		if err != nil || insp.ExitCode != 0 {
 			continue
 		}
@@ -265,26 +262,27 @@ func (c *Client) detectShell(ctx context.Context, containerID string) (string, e
 
 // ExecResize resizes the PTY for a running exec session.
 func (c *Client) ExecResize(ctx context.Context, execID string, height, width uint) error {
-	return c.cli.ContainerExecResize(ctx, execID, dockertypes.ResizeOptions{
+	_, err := c.cli.ExecResize(ctx, execID, client.ExecResizeOptions{
 		Height: height,
 		Width:  width,
 	})
+	return err
 }
-// compose project whose directory is stackDir (matched by project label).
+
+// ListStackContainers returns container names for the compose project at stackDir.
 func (c *Client) ListStackContainers(ctx context.Context, stackDir string) ([]string, error) {
-	// Compose derives the project name from the directory name, lowercased.
 	parts := strings.Split(strings.TrimRight(stackDir, "/"), "/")
 	projectName := strings.ToLower(parts[len(parts)-1])
 
-	ctrs, err := c.cli.ContainerList(ctx, dockertypes.ListOptions{
+	result, err := c.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+projectName)),
+		Filters: make(client.Filters).Add("label", "com.docker.compose.project="+projectName),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list stack containers: %w", err)
 	}
-	names := make([]string, 0, len(ctrs))
-	for _, ct := range ctrs {
+	names := make([]string, 0, len(result.Items))
+	for _, ct := range result.Items {
 		if len(ct.Names) > 0 {
 			names = append(names, strings.TrimPrefix(ct.Names[0], "/"))
 		}
