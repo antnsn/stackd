@@ -461,6 +461,14 @@ export function Settings() {
   const [tab, setTab] = useState('repos')
   const [sshKeys, setSSHKeys] = useState([])
 
+  // Load SSH keys upfront so the repo modal has them regardless of active tab.
+  useEffect(() => {
+    fetch('/api/settings/ssh-keys')
+      .then(r => r.json())
+      .then(data => setSSHKeys(data || []))
+      .catch(() => {})
+  }, [])
+
   return (
     <div class="settings-page">
       <nav class="settings-nav" aria-label="Settings sections">
