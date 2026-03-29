@@ -20,8 +20,12 @@
 
 .sidebar-brand {
   padding: var(--space-4) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   flex-shrink: 0;
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 100%
+  );
 }
 
 .app-logo {
@@ -70,9 +74,11 @@
 }
 
 .sidebar-settings-btn.active {
-  background: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
   font-weight: var(--font-semibold);
+  border-left: 2px solid var(--accent);
+  padding-left: calc(var(--space-3) - 2px);
 }
 
 .sidebar-settings-btn:focus-visible {
@@ -161,9 +167,11 @@
 }
 
 .repo-nav__item.active {
-  background: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
   font-weight: var(--font-semibold);
+  border-left: 2px solid var(--accent);
+  padding-left: calc(var(--space-3) - 2px);
 }
 
 .repo-nav__item:focus-visible {

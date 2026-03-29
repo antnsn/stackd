@@ -13,9 +13,12 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   flex-shrink: 0;
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 60%
+  );
   gap: var(--space-3);
 }
 
@@ -210,7 +213,12 @@
 .stack-card-main:hover {
   background: var(--bg-tertiary);
   transform: translateY(-2px);
+  border-color: var(--border-subtle);
 }
+
+.stack-card-main--running:hover  { border-left-color: var(--status-running); box-shadow: 0 4px 16px color-mix(in srgb, var(--status-running) 12%, transparent); }
+.stack-card-main--error:hover,
+.stack-card-main--stopped:hover  { box-shadow: 0 4px 16px color-mix(in srgb, var(--status-stopped) 10%, transparent); }
 
 .stack-card-main:active { transform: translateY(0); }
 
@@ -219,11 +227,17 @@
   outline-offset: 2px;
 }
 
-/* Status accent border */
+/* Status accent border + surface tint */
 .stack-card-main--running  { border-left-color: var(--status-running);  }
 .stack-card-main--stopped,
-.stack-card-main--exited   { border-left-color: var(--status-stopped);  }
-.stack-card-main--error    { border-left-color: var(--status-error);    }
+.stack-card-main--exited   {
+  border-left-color: var(--status-stopped);
+  background: color-mix(in srgb, var(--status-stopped) 5%, var(--bg-secondary));
+}
+.stack-card-main--error    {
+  border-left-color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 6%, var(--bg-secondary));
+}
 .stack-card-main--applying { border-left-color: var(--status-applying); }
 .stack-card-main--unknown  { border-left-color: var(--status-unknown);  }
 
@@ -274,12 +288,12 @@
   text-transform: capitalize;
 }
 
-.stack-card-main--running  .stack-card-main__badge { color: var(--status-running);  background: color-mix(in srgb, var(--status-running)  12%, transparent); }
+.stack-card-main--running  .stack-card-main__badge { color: var(--status-running);  background: color-mix(in srgb, var(--status-running)  22%, transparent); }
 .stack-card-main--stopped  .stack-card-main__badge,
-.stack-card-main--exited   .stack-card-main__badge { color: var(--status-stopped);  background: color-mix(in srgb, var(--status-stopped)  12%, transparent); }
-.stack-card-main--error    .stack-card-main__badge { color: var(--status-error);    background: color-mix(in srgb, var(--status-error)    12%, transparent); }
-.stack-card-main--applying .stack-card-main__badge { color: var(--status-applying); background: color-mix(in srgb, var(--status-applying) 12%, transparent); }
-.stack-card-main--unknown  .stack-card-main__badge { color: var(--status-unknown);  background: color-mix(in srgb, var(--status-unknown)  12%, transparent); }
+.stack-card-main--exited   .stack-card-main__badge { color: var(--status-stopped);  background: color-mix(in srgb, var(--status-stopped)  22%, transparent); }
+.stack-card-main--error    .stack-card-main__badge { color: var(--status-error);    background: color-mix(in srgb, var(--status-error)    22%, transparent); }
+.stack-card-main--applying .stack-card-main__badge { color: var(--status-applying); background: color-mix(in srgb, var(--status-applying) 22%, transparent); }
+.stack-card-main--unknown  .stack-card-main__badge { color: var(--status-unknown);  background: color-mix(in srgb, var(--status-unknown)  22%, transparent); }
 
 .stack-card-main__ctrs {
   font-family: var(--font-mono);
