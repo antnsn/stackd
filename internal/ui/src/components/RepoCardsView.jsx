@@ -256,7 +256,18 @@ export function ActivityFeed() {
   const [events, setEvents] = useState([])
   const [visible, setVisible] = useState(false)
   const [fading, setFading] = useState(false)
+  const [showPulls, setShowPulls] = useState(
+    () => localStorage.getItem('activity-show-pulls') === 'true'
+  )
   const fadeTimer = useRef(null)
+
+  const togglePulls = () => {
+    setShowPulls(v => {
+      const next = !v
+      localStorage.setItem('activity-show-pulls', String(next))
+      return next
+    })
+  }
 
   // When events list empties, start a fade-out then hide
   useEffect(() => {
@@ -274,6 +285,10 @@ export function ActivityFeed() {
     es.onmessage = e => {
       try {
         const ev = JSON.parse(e.data)
+        // Repo-level pull events (no stack) — suppress unless opted in
+        const isPull = (ev.type === 'pulling' || ev.type === 'done') && !ev.stack
+        if (isPull && localStorage.getItem('activity-show-pulls') !== 'true') return
+
         const id = Date.now() + Math.random()
         const key = eventKey(ev)
         const isResolution = ev.type === 'done' || ev.type === 'error'
@@ -311,6 +326,12 @@ export function ActivityFeed() {
     <div class={`activity-feed${fading ? ' activity-feed--fading' : ''}`} role="log" aria-live="polite" aria-label="Activity">
       <div class="activity-feed__header">
         <span class="activity-feed__title">Activity</span>
+        <button
+          class={`activity-feed__pulls-toggle${showPulls ? ' activity-feed__pulls-toggle--on' : ''}`}
+          onClick={togglePulls}
+          title={showPulls ? 'Hide repo pulls' : 'Show repo pulls'}
+          aria-pressed={showPulls}
+        >⇩ pulls</button>
         <button class="activity-feed__close" onClick={() => setVisible(false)} aria-label="Dismiss">×</button>
       </div>
       <ul class="activity-feed__list">

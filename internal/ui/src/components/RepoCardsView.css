@@ -507,6 +507,22 @@
 }
 .activity-feed__close:hover { color: var(--text-primary); }
 
+.activity-feed__pulls-toggle {
+  margin-left: auto;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.activity-feed__pulls-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.activity-feed__pulls-toggle--on { color: var(--accent); border-color: var(--accent); }
+
 .activity-feed__list {
   list-style: none;
   margin: 0;
