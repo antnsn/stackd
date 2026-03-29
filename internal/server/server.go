@@ -176,6 +176,21 @@ func (s *Server) registerRoutes() {
 
 	// GET /metrics — Prometheus metrics (no auth required)
 	s.mux.HandleFunc("GET /metrics", metrics.Handler)
+
+	// ---- Settings API ----
+	// Repos
+	s.mux.HandleFunc("GET /api/settings/repos", s.handleListRepos)
+	s.mux.HandleFunc("POST /api/settings/repos", s.handleCreateRepo)
+	s.mux.HandleFunc("GET /api/settings/repos/{id}", s.handleGetRepo)
+	s.mux.HandleFunc("PUT /api/settings/repos/{id}", s.handleUpdateRepo)
+	s.mux.HandleFunc("DELETE /api/settings/repos/{id}", s.handleDeleteRepo)
+	// SSH keys
+	s.mux.HandleFunc("GET /api/settings/ssh-keys", s.handleListSSHKeys)
+	s.mux.HandleFunc("POST /api/settings/ssh-keys", s.handleCreateSSHKey)
+	s.mux.HandleFunc("DELETE /api/settings/ssh-keys/{id}", s.handleDeleteSSHKey)
+	// General settings
+	s.mux.HandleFunc("GET /api/settings/general", s.handleGetGeneralSettings)
+	s.mux.HandleFunc("PUT /api/settings/general", s.handleUpdateGeneralSettings)
 }
 
 // repoView is the per-repo shape returned by /api/status.
