@@ -396,17 +396,23 @@
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  background: var(--bg-secondary);
+  background-color: var(--bg-secondary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px 6px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 3px 22px 3px 8px;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
   transition: border-color 0.1s, color 0.1s;
+}
+
+.sort-select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .sort-select:hover {
