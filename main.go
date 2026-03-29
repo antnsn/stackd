@@ -415,9 +415,14 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 
 	destDir := filepath.Join(cloneDir, repo.Name)
 
-	shaCtx, shaCancel := context.WithTimeout(ctx, 10*time.Second)
-	oldSHA, _ := git.HeadSHA(shaCtx, destDir)
-	shaCancel()
+	// Use the state store's last known SHA (not git on disk) so that after a
+	// restart the in-memory state is empty and stacks always get re-applied.
+	var oldSHA string
+	if store != nil {
+		if rs, ok := store.GetRepo(repoName); ok {
+			oldSHA = rs.LastSHA
+		}
+	}
 
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 120*time.Second)
 	err := git.Clone(cloneCtx, repo.URL, destDir, opts)
