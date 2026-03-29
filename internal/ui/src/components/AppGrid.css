@@ -175,6 +175,14 @@
   font-style: italic;
 }
 
+.empty-stacks__hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: normal;
+  margin-top: 2px;
+}
+
 /* ── Stack card ──────────────────────────────────── */
 .stack-card {
   width: 100%;

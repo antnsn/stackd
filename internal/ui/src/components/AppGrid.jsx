@@ -109,7 +109,7 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
             class={`sync-btn ${isSyncing ? 'sync-btn--spinning' : ''}`}
             onClick={() => onForceSync(repo.name)}
             aria-label={isSyncing ? `Syncing ${repo.name}…` : `Force sync ${repo.name}`}
-            title={isSyncing ? 'Syncing…' : 'Force sync'}
+            title={isSyncing ? 'Syncing…' : 'Force sync: git pull + docker compose up'}
             disabled={isSyncing}
           >
             <span aria-hidden="true">↻</span>
@@ -117,21 +117,23 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
         </div>
       </div>
 
-      <div class="grid-sort-bar">
-        <label for={`stack-sort-${repo.name}`} class="sort-label">Sort</label>
-        <select
-          id={`stack-sort-${repo.name}`}
-          name="stack-sort"
-          class="sort-select"
-          value={sortOrder}
-          onChange={onSortChange}
-          aria-label="Sort stacks"
-        >
-          {SORT_OPTIONS.map(o => (
-            <option key={o.key} value={o.key}>{o.label}</option>
-          ))}
-        </select>
-      </div>
+      {sortedStacks.length > 1 && (
+        <div class="grid-sort-bar">
+          <label for={`stack-sort-${repo.name}`} class="sort-label">Sort</label>
+          <select
+            id={`stack-sort-${repo.name}`}
+            name="stack-sort"
+            class="sort-select"
+            value={sortOrder}
+            onChange={onSortChange}
+            aria-label="Sort stacks"
+          >
+            {SORT_OPTIONS.map(o => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div class="stack-list">
         {sortedStacks.length > 0 ? (
@@ -148,7 +150,10 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
             />
           ))
         ) : (
-          <div class="empty-stacks">No stacks configured</div>
+          <div class="empty-stacks">
+            No stacks configured
+            <span class="empty-stacks__hint">Set STACKS_DIR_{repo.name.toUpperCase()} to add stacks</span>
+          </div>
         )}
       </div>
     </div>

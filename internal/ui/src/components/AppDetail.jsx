@@ -70,6 +70,7 @@ export function AppDetail({ stack, onClose, onRefresh }) {
                 aria-selected={c.name === selectedContainer}
                 class={`container-tab ${c.name === selectedContainer ? 'container-tab--active' : ''}`}
                 onClick={() => setSelectedContainer(c.name)}
+                title={c.name}
               >
                 <span class={`status-dot status-dot--${c.status}`} aria-hidden="true" />
                 {c.name}
@@ -109,6 +110,8 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
   const [tab, setTab] = useState('logs')
   const [actionState, setActionState] = useState(null)
   const [activeAction, setActiveAction] = useState(null)
+  const [pendingStop, setPendingStop] = useState(false)
+  const [stopTimer, setStopTimer] = useState(null)
 
   const isRunning = container.status === 'running'
   const isStopped = container.status === 'stopped' || container.status === 'exited'
@@ -129,6 +132,26 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
     }
   }
 
+  const handleStopClick = () => {
+    if (pendingStop) {
+      clearTimeout(stopTimer)
+      setPendingStop(false)
+      setStopTimer(null)
+      doAction('stop')
+    } else {
+      setPendingStop(true)
+      const t = setTimeout(() => {
+        setPendingStop(false)
+        setStopTimer(null)
+      }, 3000)
+      setStopTimer(t)
+    }
+  }
+
+  useEffect(() => {
+    return () => { if (stopTimer) clearTimeout(stopTimer) }
+  }, [stopTimer])
+
   const loading = actionState === 'loading'
 
   return (
@@ -144,12 +167,12 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
             {activeAction === 'start' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '▶'} Start
           </button>
           <button
-            class={`ctrl-btn ctrl-btn--stop ${activeAction === 'stop' && loading ? 'ctrl-btn--loading' : ''}`}
-            onClick={() => doAction('stop')}
+            class={`ctrl-btn ctrl-btn--stop ${pendingStop ? 'ctrl-btn--confirm' : ''} ${activeAction === 'stop' && loading ? 'ctrl-btn--loading' : ''}`}
+            onClick={handleStopClick}
             disabled={loading || isStopped}
             aria-label={`Stop ${container.name}`}
           >
-            {activeAction === 'stop' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : '■'} Stop
+            {activeAction === 'stop' && loading ? <span class="ctrl-spinner" aria-hidden="true" /> : (pendingStop ? '?' : '■')} {pendingStop ? 'Confirm stop' : 'Stop'}
           </button>
           <button
             class={`ctrl-btn ctrl-btn--restart ${activeAction === 'restart' && loading ? 'ctrl-btn--loading' : ''}`}
@@ -188,6 +211,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
 function LogStream({ containerName }) {
   const [logs, setLogs] = useState([])
   const [streamEnded, setStreamEnded] = useState(false)
+  const [filterText, setFilterText] = useState('')
   const esRef = useRef(null)
   const endRef = useRef(null)
   const mountedRef = useRef(false)
@@ -218,6 +242,10 @@ function LogStream({ containerName }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
+  const visibleLogs = filterText
+    ? logs.filter(e => e.text.toLowerCase().includes(filterText.toLowerCase()))
+    : logs
+
   return (
     <div class="logs-wrapper">
       {streamEnded && (
@@ -226,9 +254,29 @@ function LogStream({ containerName }) {
           <button class="stream-reconnect" onClick={startStream}><span aria-hidden="true">↻</span> Reconnect</button>
         </div>
       )}
+      <div class="log-filter-bar">
+        <input
+          type="text"
+          class="log-filter-input"
+          placeholder="Filter logs…"
+          value={filterText}
+          onInput={e => setFilterText(e.target.value)}
+          aria-label="Filter log lines"
+        />
+        {filterText && (
+          <button class="log-filter-clear" onClick={() => setFilterText('')} aria-label="Clear filter">
+            ✕
+          </button>
+        )}
+        {filterText && (
+          <span class="log-filter-count" aria-live="polite">
+            {visibleLogs.length}/{logs.length}
+          </span>
+        )}
+      </div>
       <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
         {!logs.length && !streamEnded && <div class="logs-empty">Waiting for logs…</div>}
-        {logs.map((entry) => (
+        {visibleLogs.map((entry) => (
           <div key={entry.id} class={`log-line ${classifyLog(entry.text)} ${entry.isNew ? 'log-line--new' : ''}`}>
             <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
             <span class="log-text">{entry.text}</span>
@@ -276,8 +324,16 @@ function EnvVars({ envs }) {
 // ── ContainerInfo ─────────────────────────────────────
 
 function ContainerInfo({ container, lastOutput, lastError, repoName, stackName }) {
-  return (
-    <div class="container-info">
+  const infoRef = useRef(null)
+
+  useEffect(() => {
+    if (lastError && infoRef.current) {
+      infoRef.current.scrollTop = 0
+    }
+  }, [lastError])
+
+  const metaRows = (
+    <>
       {container.id && (
         <div class="info-row">
           <span class="info-label">Container ID</span>
@@ -295,12 +351,8 @@ function ContainerInfo({ container, lastOutput, lastError, repoName, stackName }
       {container.startedAt && container.startedAt !== '0001-01-01T00:00:00Z' && (
         <div class="info-row">
           <span class="info-label">Started</span>
-          <span class="info-value">
+          <span class="info-value" title={formatDateTime(container.startedAt)}>
             {formatRelative(container.startedAt)}
-            <span aria-hidden="true"> · </span>
-            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-              {formatDateTime(container.startedAt)}
-            </span>
           </span>
         </div>
       )}
@@ -310,14 +362,29 @@ function ContainerInfo({ container, lastOutput, lastError, repoName, stackName }
           <span class="info-value info-value--mono">{container.ports.join(', ')}</span>
         </div>
       )}
+    </>
+  )
 
-      {lastOutput && (
+  return (
+    <div class="container-info" ref={infoRef}>
+      {lastError ? (
         <>
           <div class="info-section-divider">Last compose run</div>
-          <pre class={`info-output ${lastError ? 'info-output--error' : 'info-output--ok'}`}>{lastOutput}</pre>
+          <pre class="info-output info-output--error">{lastOutput}</pre>
+          <div class="info-section-divider" style={{ marginTop: '8px' }} />
+          {metaRows}
+        </>
+      ) : (
+        <>
+          {metaRows}
+          {lastOutput && (
+            <>
+              <div class="info-section-divider">Last compose run</div>
+              <pre class="info-output info-output--ok">{lastOutput}</pre>
+            </>
+          )}
         </>
       )}
-
       <ComposeViewer repoName={repoName} stackName={stackName} />
     </div>
   )

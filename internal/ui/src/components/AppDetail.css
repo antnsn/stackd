@@ -277,6 +277,17 @@
 .ctrl-btn--stop:not(:disabled):hover   { background: rgba(248, 81, 73, 0.1);   color: var(--status-stopped);  }
 .ctrl-btn--restart:not(:disabled):hover { background: rgba(88, 166, 255, 0.1); color: var(--status-applying); }
 
+.ctrl-btn--confirm {
+  background: rgba(210, 153, 34, 0.12);
+  color: var(--status-degraded);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.ctrl-btn--confirm:not(:disabled):hover {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--status-degraded);
+}
+
 .ctrl-spinner {
   display: inline-block;
   width: 10px;
@@ -335,6 +346,62 @@
 .info-tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── Log filter bar ───────────────────────────────── */
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.log-filter-input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+  min-width: 0;
+}
+
+.log-filter-input::placeholder {
+  color: var(--text-muted);
+}
+
+.log-filter-input:focus {
+  border-color: var(--accent);
+}
+
+.log-filter-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.log-filter-clear:hover {
+  color: var(--text-primary);
+}
+
+.log-filter-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── Log viewer ──────────────────────────────────── */
@@ -658,6 +725,18 @@
   .info-tab {
     min-height: 44px;
     padding: 10px 14px;
+  }
+
+  /* Move action bar to bottom for thumb-zone access on mobile */
+  .container-detail {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .container-actions {
+    order: 10;
+    border-top: 1px solid var(--border-color);
+    border-bottom: none;
   }
 }
 
