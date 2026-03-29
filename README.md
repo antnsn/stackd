@@ -54,7 +54,8 @@ Open `http://localhost:8080` to see the dashboard.
 | [Configuration](docs/configuration.md) | All env vars, stackd.yaml schema, per-repo overrides |
 | [Installation](docs/installation.md) | Docker Compose setup, volume mounts, first run |
 | [SSH Setup](docs/ssh.md) | SSH key configuration and troubleshooting |
-| [Infisical Secrets](docs/infisical.md) | Secrets injection integration |
+| [Infisical Secrets](docs/infisical.md) | Secrets injection — migrate compose files, global token, per-stack toml |
+| [Database](docs/database.md) | SQLite config store, SECRET_KEY, persistence, PostgreSQL option |
 | [Security](docs/security.md) | Auth, rate limiting, production hardening |
 | [Observability](docs/observability.md) | Logging, health probes, Prometheus metrics |
 | [API Reference](docs/api.md) | Full HTTP API with request/response examples |
