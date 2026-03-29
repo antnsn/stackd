@@ -522,6 +522,9 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 		stacksDir := filepath.Join(destDir, repo.StacksDir)
 		runStacksSync(ctx, stacksDir, repoName, store, dockerClient, infisicalCfg, bus)
 	}
+	if bus != nil {
+		bus.Publish(state.ActivityEvent{Type: "done", Repo: repoName, Msg: repoName + " up to date"})
+	}
 
 	if store != nil {
 		store.UpdateRepo(state.RepoState{

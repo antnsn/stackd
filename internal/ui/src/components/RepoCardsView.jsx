@@ -244,7 +244,7 @@ function ContainerRow({ container }) {
 // ── ActivityFeed ──────────────────────────────────────────────────────────────
 
 const ACTIVITY_ICONS = { pulling: '⇩', applying: '↻', done: '✓', error: '✕' }
-const MAX_EVENTS = 12
+const MAX_EVENTS = 5
 
 // Returns the key that uniquely identifies an in-progress operation.
 // "done"/"error" resolve the matching "pulling"/"applying" entry.
