@@ -145,17 +145,9 @@ export function App() {
         <div class="sidebar-brand">
           <h1 class="sr-only">stackd</h1>
           <img src="/logo.svg" alt="stackd" class="app-logo" width="118" height="44" />
-          <button
-            class={`sidebar-mobile-settings${page === 'settings' ? ' active' : ''}`}
-            onClick={() => setPage(p => p === 'settings' ? 'dashboard' : 'settings')}
-            aria-label="Settings"
-          >
-            ⚙
-          </button>
         </div>
         <div class="sidebar-body">
           <nav class="repo-nav" aria-label="Repositories">
-            <span class="repo-nav__label">Repos</span>
             {repos.map(repo => {
               const isActive = selectedRepo === repo.name
               const hasError = (repo.stacks || []).some(s =>
@@ -230,12 +222,6 @@ export function App() {
           </div>
         )}
 
-        {!error && !loading && repos.length > 0 && problemStacks.length === 0 && (
-          <div class="health-banner health-banner--ok" role="status">
-            <span class="health-banner__icon" aria-hidden="true">✓</span>
-            <span class="health-banner__text">All stacks running</span>
-          </div>
-        )}
 
         <main class="app-content">
           {page === 'settings' ? (

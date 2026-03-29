@@ -64,10 +64,7 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
   return (
     <div class="repo-cards-view">
       <div class="repo-cards-topbar">
-        <h2 class="repo-cards-title">
-          <span class="repo-cards-title__label">Repos:</span>
-          {repo.name}
-        </h2>
+        <h2 class="repo-cards-title">{repo.name}</h2>
 
         <div class="repo-search">
           <span class="repo-search__icon" aria-hidden="true">⌕</span>
@@ -146,7 +143,6 @@ function SortDropdown({ value, onChange, options }) {
 
   return (
     <div class={`sort-dropdown${open ? ' sort-dropdown--open' : ''}`} ref={ref}>
-      <span class="sort-label">Sort</span>
       <button
         class="sort-dropdown__trigger"
         onClick={() => setOpen(o => !o)}

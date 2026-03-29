@@ -33,13 +33,6 @@
   padding: 0;
 }
 
-.repo-cards-title__label {
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
 .repo-cards-topbar__actions {
   display: flex;
   align-items: center;
