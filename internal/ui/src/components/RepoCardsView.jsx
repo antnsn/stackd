@@ -64,7 +64,10 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
   return (
     <div class="repo-cards-view">
       <div class="repo-cards-topbar">
-        <span class="repo-cards-title">{repo.name}</span>
+        <span class="repo-cards-title">
+          <span class="repo-cards-title__label">Repository</span>
+          {repo.name}
+        </span>
 
         <div class="repo-search">
           <span class="repo-search__icon" aria-hidden="true">⌕</span>

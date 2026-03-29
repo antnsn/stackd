@@ -17,6 +17,9 @@
 }
 
 .repo-cards-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-family: var(--font-ui);
   font-size: var(--text-base);
   font-weight: var(--font-semibold);
@@ -25,6 +28,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   margin-right: var(--space-1);
+}
+
+.repo-cards-title__label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  flex-shrink: 0;
 }
 
 .repo-cards-topbar__actions {
