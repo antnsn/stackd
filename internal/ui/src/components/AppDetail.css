@@ -406,14 +406,14 @@
   background: var(--bg-hover);
 }
 
-/* P1-11 fix: var(--accent) instead of hardcoded #79c0ff */
 .env-key {
   font-family: var(--font-mono);
   color: var(--accent);
   font-weight: 500;
   flex-shrink: 0;
-  min-width: 180px;
-  max-width: 100%;
+  min-width: 0;
+  max-width: 50%;
+  overflow-wrap: break-word;
 }
 
 .env-key::after {
@@ -426,6 +426,7 @@
   font-family: var(--font-mono);
   color: var(--text-primary);
   word-break: break-all;
+  overflow-wrap: break-word;
   min-width: 0;
   flex: 1;
 }
@@ -435,14 +436,13 @@
   letter-spacing: 2px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .env-item {
     flex-direction: column;
     gap: 2px;
   }
 
   .env-key {
-    min-width: 0;
     max-width: 100%;
   }
 
