@@ -73,6 +73,11 @@ html, body, #app {
   --status-syncing:  #58a6ff;
   --status-ok:       #3fb950;
 
+  /* ── Log level colours ───────────────────────────── */
+  --log-error-text:  #ff7b72;   /* matches GitHub red for errors  */
+  --log-warn-text:   #e3b341;   /* matches GitHub yellow warnings */
+  --log-debug-text:  var(--text-mono);  /* reuses existing mono blue */
+
   /* ── Radius — tight, purposeful ─────────────── */
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -144,8 +149,8 @@ body {
 }
 
 @keyframes dotGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
-  50%       { box-shadow: 0 0 0 4px rgba(63, 185, 80, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-running) 40%, transparent); }
+  50%       { box-shadow: 0 0 0 4px transparent; }
 }
 
 @keyframes infoReveal {

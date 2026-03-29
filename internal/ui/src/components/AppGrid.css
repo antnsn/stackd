@@ -112,7 +112,7 @@
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--status-stopped);
-  background: rgba(248, 81, 73, 0.08);
+  background: color-mix(in srgb, var(--status-stopped) 8%, transparent);
   border-left: 2px solid var(--status-stopped);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -270,7 +270,7 @@
   gap: var(--space-1);
   margin-top: 6px;
   padding: 5px 8px;
-  background: rgba(248, 81, 73, 0.08);
+  background: color-mix(in srgb, var(--status-stopped) 8%, transparent);
   border-left: 2px solid var(--status-stopped);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-family: var(--font-mono);
@@ -299,13 +299,13 @@
   white-space: nowrap;
 }
 
-.stack-badge--running  { background: rgba(63,  185, 80,  0.15); color: var(--status-running);  }
-.stack-badge--ok       { background: rgba(63,  185, 80,  0.15); color: var(--status-ok);       }
-.stack-badge--stopped  { background: rgba(248, 81,  73,  0.12); color: var(--status-stopped);  }
-.stack-badge--degraded { background: rgba(210, 153, 34,  0.12); color: var(--status-degraded); }
-.stack-badge--error    { background: rgba(248, 81,  73,  0.12); color: var(--status-error);    }
-.stack-badge--applying { background: rgba(88,  166, 255, 0.12); color: var(--status-applying); }
-.stack-badge--unknown  { background: rgba(72,  79,  88,  0.2);  color: var(--status-unknown);  }
+.stack-badge--running  { background: color-mix(in srgb, var(--status-running)  15%, transparent); color: var(--status-running);  }
+.stack-badge--ok       { background: color-mix(in srgb, var(--status-ok)       15%, transparent); color: var(--status-ok);       }
+.stack-badge--stopped  { background: color-mix(in srgb, var(--status-stopped)  12%, transparent); color: var(--status-stopped);  }
+.stack-badge--degraded { background: color-mix(in srgb, var(--status-degraded) 12%, transparent); color: var(--status-degraded); }
+.stack-badge--error    { background: color-mix(in srgb, var(--status-error)    12%, transparent); color: var(--status-error);    }
+.stack-badge--applying { background: color-mix(in srgb, var(--status-applying) 12%, transparent); color: var(--status-applying); }
+.stack-badge--unknown  { background: color-mix(in srgb, var(--status-unknown)  20%, transparent); color: var(--status-unknown);  }
 
 /* ── Sync feedback ───────────────────────────────── */
 .sync-feedback {
@@ -318,17 +318,17 @@
 
 .sync-feedback--success {
   color: var(--status-running);
-  background: rgba(63, 185, 80, 0.1);
+  background: color-mix(in srgb, var(--status-running) 10%, transparent);
 }
 
 .sync-feedback--rateLimit {
   color: var(--status-degraded);
-  background: rgba(210, 153, 34, 0.1);
+  background: color-mix(in srgb, var(--status-degraded) 10%, transparent);
 }
 
 .sync-feedback--error {
   color: var(--status-stopped);
-  background: rgba(248, 81, 73, 0.1);
+  background: color-mix(in srgb, var(--status-stopped) 10%, transparent);
 }
 
 /* Flash the repo header border on sync result */

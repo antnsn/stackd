@@ -72,7 +72,7 @@
 
 .close-btn:hover {
   color: var(--status-stopped);
-  background: rgba(248, 81, 73, 0.08);
+  background: color-mix(in srgb, var(--status-stopped) 8%, transparent);
 }
 
 .close-btn:focus-visible {
@@ -97,7 +97,7 @@
 }
 
 .meta-item--error {
-  background: rgba(248, 81, 73, 0.05);
+  background: color-mix(in srgb, var(--status-stopped) 5%, transparent);
 }
 
 .meta-value--error-detail {
@@ -108,7 +108,7 @@
   word-break: break-word;
   margin: 0;
   padding: 6px 8px;
-  background: rgba(248, 81, 73, 0.07);
+  background: color-mix(in srgb, var(--status-stopped) 7%, transparent);
   border-radius: var(--radius-sm);
   border-left: 2px solid var(--status-stopped);
   max-width: 100%;
@@ -275,18 +275,18 @@
   outline-offset: 2px;
 }
 
-.ctrl-btn--start:not(:disabled):hover  { background: rgba(63, 185, 80, 0.1);   color: var(--status-running);  }
-.ctrl-btn--stop:not(:disabled):hover   { background: rgba(248, 81, 73, 0.1);   color: var(--status-stopped);  }
-.ctrl-btn--restart:not(:disabled):hover { background: rgba(88, 166, 255, 0.1); color: var(--status-applying); }
+.ctrl-btn--start:not(:disabled):hover  { background: color-mix(in srgb, var(--status-running)  10%, transparent); color: var(--status-running);  }
+.ctrl-btn--stop:not(:disabled):hover   { background: color-mix(in srgb, var(--status-stopped)  10%, transparent); color: var(--status-stopped);  }
+.ctrl-btn--restart:not(:disabled):hover { background: color-mix(in srgb, var(--status-applying) 10%, transparent); color: var(--status-applying); }
 
 .ctrl-btn--confirm {
-  background: rgba(210, 153, 34, 0.12);
+  background: color-mix(in srgb, var(--status-degraded) 12%, transparent);
   color: var(--status-degraded);
-  border: 1px solid rgba(210, 153, 34, 0.3);
+  border: 1px solid color-mix(in srgb, var(--status-degraded) 30%, transparent);
 }
 
 .ctrl-btn--confirm:not(:disabled):hover {
-  background: rgba(210, 153, 34, 0.2);
+  background: color-mix(in srgb, var(--status-degraded) 20%, transparent);
   color: var(--status-degraded);
 }
 
@@ -439,7 +439,7 @@
 }
 
 .log-line:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-hover);
 }
 
 /* P1-13 fix: timestamp min-width + muted color */
@@ -462,15 +462,15 @@
   border-left-color: var(--status-stopped);
   padding-left: 6px;
 }
-.log-error .log-text { color: #ff7b72; }
+.log-error .log-text { color: var(--log-error-text); }
 
 .log-warn {
   border-left-color: var(--status-degraded);
   padding-left: 6px;
 }
-.log-warn .log-text { color: #e3b341; }
+.log-warn .log-text { color: var(--log-warn-text); }
 
-.log-debug .log-text { color: #79c0ff; }
+.log-debug .log-text { color: var(--log-debug-text); }
 
 /* ── Env vars ────────────────────────────────────── */
 /* Terminal-style display: key=value, monospace throughout */
@@ -635,8 +635,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 7px 12px;
-  background: rgba(210, 153, 34, 0.08);
-  border-bottom: 1px solid rgba(210, 153, 34, 0.25);
+  background: color-mix(in srgb, var(--status-degraded) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--status-degraded) 25%, transparent);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--status-degraded);
@@ -645,7 +645,7 @@
 
 .stream-reconnect {
   background: transparent;
-  border: 1px solid rgba(210, 153, 34, 0.4);
+  border: 1px solid color-mix(in srgb, var(--status-degraded) 40%, transparent);
   color: var(--status-degraded);
   padding: 3px 10px;
   border-radius: var(--radius-sm);
@@ -656,19 +656,13 @@
 }
 
 .stream-reconnect:hover {
-  background: rgba(210, 153, 34, 0.12);
+  background: color-mix(in srgb, var(--status-degraded) 12%, transparent);
 }
 
 .stream-reconnect:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
-/* ── Status dots — no glow rings ─────────────────── */
-.status-dot--running  { background: var(--status-running);  box-shadow: none; }
-.status-dot--stopped,
-.status-dot--exited   { background: var(--status-stopped);  box-shadow: none; }
-.status-dot--restarting { background: var(--status-degraded); box-shadow: none; }
 
 /* ── Mobile: bottom close bar ────────────────────── */
 .mobile-close-bar {
@@ -827,7 +821,7 @@
 
 .info-output--error {
   color: var(--status-stopped);
-  background: rgba(248, 81, 73, 0.05);
+  background: color-mix(in srgb, var(--status-stopped) 5%, transparent);
   border-left: 2px solid var(--status-stopped);
   padding-left: 14px;
 }
