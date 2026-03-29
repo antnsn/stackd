@@ -160,12 +160,39 @@ func extractErrorSummary(output string, fallback string) string {
 // "docker compose up -d" or an "infisical run -- docker compose up -d" command depending
 // on the INFISICAL_ENABLED env var and available credentials. The provided ctx is used
 // directly, so callers should set an appropriate deadline before calling.
+// composeUsesEnvVars returns true if the compose file in stackPath contains
+// any ${VAR} or $VAR substitution references, meaning Infisical will actually
+// inject something useful. Stacks with no variable references get no indicator
+// even when a global token is configured.
+func composeUsesEnvVars(stackPath string) bool {
+	candidates := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+	for _, name := range candidates {
+		data, err := os.ReadFile(filepath.Join(stackPath, name))
+		if err != nil {
+			continue
+		}
+		content := string(data)
+		// Match ${VAR...} or bare $WORD (uppercase env var convention)
+		if strings.Contains(content, "${") {
+			return true
+		}
+		// Also catch bare $UPPERCASE_VAR patterns
+		for i := 0; i < len(content)-1; i++ {
+			if content[i] == '$' && content[i+1] >= 'A' && content[i+1] <= 'Z' {
+				return true
+			}
+		}
+		return false // found the file, no vars
+	}
+	return false
+}
+
 func infisicalMode(stackPath string, cfg InfisicalConfig) string {
 	tomlPath := filepath.Join(stackPath, "infisical.toml")
 	if _, err := os.Stat(tomlPath); err == nil {
 		return "per-stack"
 	}
-	if cfg.Token != "" {
+	if cfg.Token != "" && composeUsesEnvVars(stackPath) {
 		return "global"
 	}
 	return ""
