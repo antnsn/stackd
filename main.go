@@ -1,36 +1,28 @@
 package main
 
 import (
-"context"
-"fmt"
-"log/slog"
-"os"
-"os/exec"
-"os/signal"
-"path/filepath"
-"strconv"
-"strings"
-"sync"
-"syscall"
-"time"
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
 
-"gopkg.in/yaml.v3"
-
-"stackd/internal/docker"
-"stackd/internal/metrics"
-"stackd/internal/server"
-"stackd/internal/state"
+	cryptoModule "stackd/internal/crypto"
+	"stackd/internal/db"
+	"stackd/internal/docker"
+	"stackd/internal/git"
+	"stackd/internal/metrics"
+	"stackd/internal/server"
+	"stackd/internal/state"
 )
-
-// AppConfig holds global configuration for the stackd daemon.
-type AppConfig struct {
-PullOnly            bool
-SyncIntervalSeconds int
-SyncInterval        time.Duration
-GitUserName         string
-GitUserEmail        string
-ConfigFile          string // path to optional stackd.yaml; empty = not used
-}
 
 // syncBackoff tracks retry state for a single repo.
 type syncBackoff struct {
@@ -116,126 +108,6 @@ func redactSecretEnv(key, value string) string {
 		}
 	}
 	return value
-}
-
-// RepoConfig holds per-repository configuration, derived from env vars or stackd.yaml.
-type RepoConfig struct {
-Name         string // basename of the repo directory
-Dir          string // absolute path to the git repo
-StacksDir    string // absolute path to compose stacks for this repo
-Branch       string // git branch to track, default "main"
-Remote       string // git remote name, default "origin"
-PostSyncCmd  string // optional shell command to run after pull
-PullOnly     bool   // per-repo override; if true, never push
-InfisicalEnv string // per-repo Infisical environment override
-}
-
-// yamlRepoConfig is the per-repo schema in stackd.yaml.
-type yamlRepoConfig struct {
-Name         string `yaml:"name"`
-Dir          string `yaml:"dir"`
-StacksDir    string `yaml:"stacksDir"`
-Branch       string `yaml:"branch"`
-Remote       string `yaml:"remote"`
-PostSyncCmd  string `yaml:"postSyncCmd"`
-PullOnly     bool   `yaml:"pullOnly"`
-InfisicalEnv string `yaml:"infisicalEnv"`
-}
-
-// yamlAppConfig is the top-level schema of stackd.yaml.
-type yamlAppConfig struct {
-PullOnly            bool   `yaml:"pullOnly"`
-SyncIntervalSeconds int    `yaml:"syncIntervalSeconds"`
-GitUser             struct {
-Name  string `yaml:"name"`
-Email string `yaml:"email"`
-} `yaml:"gitUser"`
-Repos []yamlRepoConfig `yaml:"repos"`
-}
-
-// getMountedVolumes returns a list of directories inside REPOS_DIR (default /repos).
-func getMountedVolumes() ([]string, error) {
-reposDir := os.Getenv("REPOS_DIR")
-if reposDir == "" {
-reposDir = "/repos"
-}
-var volumes []string
-files, err := os.ReadDir(reposDir)
-if err != nil {
-return nil, err
-}
-for _, file := range files {
-if file.IsDir() {
-volumes = append(volumes, filepath.Join(reposDir, file.Name()))
-}
-}
-return volumes, nil
-}
-
-func setupSSH() error {
-sshKeyPath := os.Getenv("SSH_KEY_PATH")
-if sshKeyPath == "" {
-sshKeyPath = "/root/.ssh/id_rsa"
-}
-
-if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
-return fmt.Errorf("SSH key not found at %s", sshKeyPath)
-}
-
-// Write SSH config and known_hosts to a private temp dir owned by this
-// process. This avoids permission errors when SSH_KEY_PATH points to a
-// bind-mounted directory owned by a different user (e.g. the host's plecto
-// user vs. the container's root).
-sshTmpDir := "/tmp/stackd-ssh"
-if err := os.MkdirAll(sshTmpDir, 0700); err != nil {
-return fmt.Errorf("failed to create ssh tmp dir: %v", err)
-}
-
-// Scan GitHub host keys.
-sshCtx, sshCancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer sshCancel()
-knownHostsCmd := exec.CommandContext(sshCtx, "ssh-keyscan", "github.com")
-knownHosts, err := knownHostsCmd.Output()
-if err != nil {
-return fmt.Errorf("failed to scan GitHub SSH keys: %v", err)
-}
-knownHostsPath := filepath.Join(sshTmpDir, "known_hosts")
-if err := os.WriteFile(knownHostsPath, knownHosts, 0600); err != nil {
-return fmt.Errorf("failed to write known_hosts: %v", err)
-}
-
-// Write a minimal SSH config pointing at the user-supplied key.
-configPath := filepath.Join(sshTmpDir, "config")
-config := fmt.Sprintf(
-"Host github.com\n\tIdentityFile %s\n\tUserKnownHostsFile %s\n\tStrictHostKeyChecking no\n",
-sshKeyPath, knownHostsPath,
-)
-if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
-return fmt.Errorf("failed to write SSH config: %v", err)
-}
-slog.Info("SSH config written", "path", configPath)
-
-// Tell git (and any child ssh process) to use our private config.
-os.Setenv("GIT_SSH_COMMAND", fmt.Sprintf("ssh -F %s", configPath))
-return nil
-}
-
-func setGitIdentity(ctx context.Context, repoDir, userName, userEmail string) {
-nameCtx, nameCancel := context.WithTimeout(ctx, 10*time.Second)
-defer nameCancel()
-nameCmd := exec.CommandContext(nameCtx, "git", "config", "user.name", userName)
-nameCmd.Dir = repoDir
-if err := nameCmd.Run(); err != nil {
-slog.Warn("failed to set git user.name", "dir", repoDir, "err", err)
-}
-
-emailCtx, emailCancel := context.WithTimeout(ctx, 10*time.Second)
-defer emailCancel()
-emailCmd := exec.CommandContext(emailCtx, "git", "config", "user.email", userEmail)
-emailCmd.Dir = repoDir
-if err := emailCmd.Run(); err != nil {
-slog.Warn("failed to set git user.email", "dir", repoDir, "err", err)
-}
 }
 
 // applyStack runs "docker compose up -d" for a single stack directory.
@@ -435,366 +307,138 @@ slog.Info("stack applied successfully", "stack", stackName)
 }
 }
 
-// loadAppConfig reads global configuration from environment variables.
-func loadAppConfig() AppConfig {
-pullOnly := strings.ToLower(os.Getenv("PULL_ONLY")) == "true"
 
-gitUserName := os.Getenv("GIT_USER_NAME")
-if gitUserName == "" {
-gitUserName = "githubSync"
-}
-
-gitUserEmail := os.Getenv("GIT_USER_EMAIL")
-if gitUserEmail == "" {
-gitUserEmail = "githubsync@localhost"
-}
-
-syncIntervalSeconds := 60
-if v, err := strconv.Atoi(os.Getenv("SYNC_INTERVAL_SECONDS")); err == nil && v > 0 {
-syncIntervalSeconds = v
-}
-
-return AppConfig{
-PullOnly:            pullOnly,
-SyncIntervalSeconds: syncIntervalSeconds,
-SyncInterval:        time.Duration(syncIntervalSeconds) * time.Second,
-GitUserName:         gitUserName,
-GitUserEmail:        gitUserEmail,
-ConfigFile:          os.Getenv("STACKD_CONFIG"),
-}
-}
-
-// loadYAMLConfig reads the optional stackd.yaml config file and returns a map
-// of repo name → yamlRepoConfig. Returns an empty map if the file doesn't exist
-// or configPath is empty.
-func loadYAMLConfig(configPath string) map[string]yamlRepoConfig {
-result := make(map[string]yamlRepoConfig)
-
-if configPath == "" {
-reposDir := os.Getenv("REPOS_DIR")
-if reposDir == "" {
-reposDir = "/repos"
-}
-configPath = filepath.Join(reposDir, "stackd.yaml")
+// runStacksSync discovers and applies all docker-compose stacks in stacksDir.
+func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, dockerClient *docker.Client) {
+	if stacksDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(stacksDir)
+	if err != nil {
+		slog.Error("failed to read stacks dir", "repo", repoName, "dir", stacksDir, "err", err)
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		stackName := entry.Name()
+		stackPath := filepath.Join(stacksDir, stackName)
+		composePath := ""
+		for _, candidate := range []string{"compose.yaml", "docker-compose.yml"} {
+			p := filepath.Join(stackPath, candidate)
+			if _, err := os.Stat(p); err == nil {
+				composePath = p
+				break
+			}
+		}
+		if composePath == "" {
+			slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", repoName)
+			continue
+		}
+		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient)
+	}
 }
 
-data, err := os.ReadFile(configPath)
-if err != nil {
-return result
-}
+// syncRepoFromDB clones or pulls the repo and applies stacks if the SHA changed.
+func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, syncInterval time.Duration, store *state.Store, dockerClient *docker.Client) {
+	repoName := repo.Name
+	start := time.Now()
 
-var cfg yamlAppConfig
-if err := yaml.Unmarshal(data, &cfg); err != nil {
-slog.Warn("failed to parse config", "path", configPath, "err", err)
-return result
-}
+	if store != nil {
+		existing, ok := store.GetRepo(repoName)
+		if !ok {
+			existing = state.RepoState{Name: repoName}
+		}
+		existing.Status = state.StatusSyncing
+		store.UpdateRepo(existing)
+	}
 
-slog.Info("loaded config", "path", configPath, "repos", len(cfg.Repos))
-for _, r := range cfg.Repos {
-result[r.Name] = r
-}
-return result
-}
+	recordError := func(msg string) {
+		slog.Error("sync error", "repo", repoName, "detail", msg)
+		if store != nil {
+			existing, _ := store.GetRepo(repoName)
+			existing.Name = repoName
+			existing.Status = state.StatusError
+			existing.LastError = msg
+			store.UpdateRepo(existing)
+		}
+		recordSyncFailure(repoName, syncInterval)
+		metrics.RecordSync(repoName, "error", time.Since(start))
+	}
 
-// loadRepoConfigs discovers mounted repos and builds a RepoConfig for each one,
-// merging env vars and optional YAML file configuration.
-func loadRepoConfigs(appCfg AppConfig) ([]RepoConfig, error) {
-dirs, err := getMountedVolumes()
-if err != nil {
-return nil, err
-}
+	lockVal, _ := repoLocks.LoadOrStore(repoName, &sync.Mutex{})
+	repoMu := lockVal.(*sync.Mutex)
+	repoMu.Lock()
+	defer repoMu.Unlock()
 
-yamlCfgs := loadYAMLConfig(appCfg.ConfigFile)
+	opts := git.AuthOpts{Type: repo.AuthType}
+	switch repo.AuthType {
+	case "ssh":
+		if repo.SSHKeyID != "" {
+			keyCtx, keyCancel := context.WithTimeout(ctx, 10*time.Second)
+			sshKey, err := db.GetSSHKey(keyCtx, sqlDB, repo.SSHKeyID)
+			keyCancel()
+			if err != nil {
+				recordError(fmt.Sprintf("get SSH key: %v", err))
+				return
+			}
+			privKey, err := cryptoModule.Decrypt(cryptoKey, sshKey.PrivateKeyEnc)
+			if err != nil {
+				recordError(fmt.Sprintf("decrypt SSH key: %v", err))
+				return
+			}
+			keyPath := fmt.Sprintf("/tmp/stackd-key-%s", repo.ID)
+			if err := os.WriteFile(keyPath, []byte(privKey), 0600); err != nil {
+				recordError(fmt.Sprintf("write SSH key file: %v", err))
+				return
+			}
+			opts.SSHKeyPath = keyPath
+		}
+	case "pat":
+		if repo.PATEnc != "" {
+			pat, err := cryptoModule.Decrypt(cryptoKey, repo.PATEnc)
+			if err != nil {
+				recordError(fmt.Sprintf("decrypt PAT: %v", err))
+				return
+			}
+			opts.PAT = pat
+		}
+	}
 
-defaultBranch := os.Getenv("BRANCH_DEFAULT")
-if defaultBranch == "" {
-defaultBranch = "main"
-}
+	destDir := filepath.Join(cloneDir, repo.Name)
 
-configs := make([]RepoConfig, 0, len(dirs))
-for _, dir := range dirs {
-name := filepath.Base(dir)
-upper := strings.ToUpper(name)
+	shaCtx, shaCancel := context.WithTimeout(ctx, 10*time.Second)
+	oldSHA, _ := git.HeadSHA(shaCtx, destDir)
+	shaCancel()
 
-cfg := RepoConfig{
-Name:   name,
-Dir:    dir,
-Branch: defaultBranch,
-Remote: "origin",
-}
+	cloneCtx, cloneCancel := context.WithTimeout(ctx, 120*time.Second)
+	err := git.Clone(cloneCtx, repo.URL, destDir, opts)
+	cloneCancel()
+	if err != nil {
+		recordError(fmt.Sprintf("git clone/pull failed: %v", err))
+		return
+	}
 
-if yc, ok := yamlCfgs[name]; ok {
-if yc.Branch != "" {
-cfg.Branch = yc.Branch
-}
-if yc.Remote != "" {
-cfg.Remote = yc.Remote
-}
-if yc.StacksDir != "" {
-cfg.StacksDir = yc.StacksDir
-}
-if yc.PostSyncCmd != "" {
-cfg.PostSyncCmd = yc.PostSyncCmd
-}
-if yc.InfisicalEnv != "" {
-cfg.InfisicalEnv = yc.InfisicalEnv
-}
-cfg.PullOnly = yc.PullOnly
-}
+	newSHACtx, newSHACancel := context.WithTimeout(ctx, 10*time.Second)
+	newSHA, _ := git.HeadSHA(newSHACtx, destDir)
+	newSHACancel()
 
-// Env vars override YAML (env > file > default)
-if v := os.Getenv("BRANCH_" + upper); v != "" {
-cfg.Branch = v
-}
-if v := os.Getenv("REMOTE_" + upper); v != "" {
-cfg.Remote = v
-}
-if v := os.Getenv("STACKS_DIR_" + upper); v != "" {
-cfg.StacksDir = v
-}
-if v := os.Getenv("POST_SYNC_" + upper); v != "" {
-cfg.PostSyncCmd = v
-}
+	if newSHA != oldSHA || oldSHA == "" {
+		stacksDir := filepath.Join(destDir, repo.StacksDir)
+		runStacksSync(ctx, stacksDir, repoName, store, dockerClient)
+	}
 
-configs = append(configs, cfg)
-}
-return configs, nil
-}
-
-func runStacksSync(ctx context.Context, cfg RepoConfig, store *state.Store, dockerClient *docker.Client) {
-if cfg.StacksDir == "" {
-return
-}
-
-entries, err := os.ReadDir(cfg.StacksDir)
-if err != nil {
-slog.Error("failed to read stacks dir", "repo", cfg.Name, "dir", cfg.StacksDir, "err", err)
-return
-}
-
-for _, entry := range entries {
-if !entry.IsDir() {
-continue
-}
-
-stackName := entry.Name()
-stackPath := filepath.Join(cfg.StacksDir, stackName)
-
-composePath := ""
-for _, candidate := range []string{"compose.yaml", "docker-compose.yml"} {
-p := filepath.Join(stackPath, candidate)
-if _, err := os.Stat(p); err == nil {
-composePath = p
-break
-}
-}
-
-if composePath == "" {
-slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", cfg.Name)
-continue
-}
-
-applyStack(ctx, stackPath, stackName, cfg.Name, store, dockerClient)
-}
-}
-
-func runPostSyncCommand(ctx context.Context, cfg RepoConfig) {
-if cfg.PostSyncCmd == "" {
-return
-}
-
-slog.Info("running post-sync command", "repo", cfg.Name, "cmd", cfg.PostSyncCmd)
-postCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-defer cancel()
-cmd := exec.CommandContext(postCtx, "sh", "-c", cfg.PostSyncCmd)
-cmd.Dir = cfg.Dir
-output, err := cmd.CombinedOutput()
-if len(output) > 0 {
-slog.Info("post-sync output", "repo", cfg.Name, "output", string(output))
-}
-if err != nil {
-slog.Error("post-sync command failed", "repo", cfg.Name, "err", err)
-} else {
-slog.Info("post-sync command completed", "repo", cfg.Name)
-}
-}
-
-func syncRepo(ctx context.Context, cfg RepoConfig, appCfg AppConfig, store *state.Store, dockerClient *docker.Client) {
-repoName := cfg.Name
-pullOnly := cfg.PullOnly || appCfg.PullOnly
-start := time.Now()
-
-if store != nil {
-existing, ok := store.GetRepo(repoName)
-if !ok {
-existing = state.RepoState{Name: repoName}
-}
-existing.Status = state.StatusSyncing
-store.UpdateRepo(existing)
-}
-
-recordError := func(msg string) {
-slog.Error("sync error", "repo", repoName, "detail", msg)
-if store != nil {
-existing, _ := store.GetRepo(repoName)
-existing.Name = repoName
-existing.Status = state.StatusError
-existing.LastError = msg
-store.UpdateRepo(existing)
-}
-recordSyncFailure(repoName, appCfg.SyncInterval)
-	metrics.RecordSync(cfg.Name, "error", time.Since(start))
-}
-
-// Ensure only one sync runs per repo at a time.
-lockVal, _ := repoLocks.LoadOrStore(cfg.Name, &sync.Mutex{})
-repoMu := lockVal.(*sync.Mutex)
-repoMu.Lock()
-defer repoMu.Unlock()
-
-// Mark the directory as safe for Git using --system instead of --global
-safeCtx, safeCancel := context.WithTimeout(ctx, 10*time.Second)
-configCmd := exec.CommandContext(safeCtx, "git", "config", "--system", "--add", "safe.directory", "*")
-if err := configCmd.Run(); err != nil {
-slog.Warn("failed to mark directories as safe", "err", err)
-}
-safeCancel()
-
-fetchCtx, fetchCancel := context.WithTimeout(ctx, 120*time.Second)
-cmd := exec.CommandContext(fetchCtx, "git", "fetch", cfg.Remote)
-cmd.Dir = cfg.Dir
-output, err := cmd.CombinedOutput()
-fetchCancel()
-if err != nil {
-recordError(fmt.Sprintf("Failed to fetch in %s: %v. Output: %s", cfg.Dir, err, string(output)))
-return
-}
-
-localCtx, localCancel := context.WithTimeout(ctx, 10*time.Second)
-local := exec.CommandContext(localCtx, "git", "rev-parse", "@")
-local.Dir = cfg.Dir
-localSHA, err := local.Output()
-localCancel()
-if err != nil {
-recordError(fmt.Sprintf("Failed to get local SHA in %s: %v", cfg.Dir, err))
-return
-}
-
-remoteCtx, remoteCancel := context.WithTimeout(ctx, 10*time.Second)
-remote := exec.CommandContext(remoteCtx, "git", "rev-parse", "@{u}")
-remote.Dir = cfg.Dir
-remoteSHA, err := remote.Output()
-remoteCancel()
-if err != nil {
-recordError(fmt.Sprintf("Failed to get remote SHA in %s: %v", cfg.Dir, err))
-return
-}
-
-currentSHA := strings.TrimSpace(string(localSHA))
-
-if string(localSHA) != string(remoteSHA) {
-slog.Info("remote changes detected, pulling", "repo", repoName, "branch", cfg.Branch, "remote", cfg.Remote)
-pullCtx, pullCancel := context.WithTimeout(ctx, 120*time.Second)
-pullCmd := exec.CommandContext(pullCtx, "git", "pull", cfg.Remote, cfg.Branch)
-pullCmd.Dir = cfg.Dir
-pullOut, pullErr := pullCmd.CombinedOutput()
-pullCancel()
-if pullErr != nil {
-recordError(fmt.Sprintf("Failed to pull in %s: %v. Output: %s", cfg.Dir, pullErr, string(pullOut)))
-return
-}
-// Update SHA after pull
-shaCtx, shaCancel := context.WithTimeout(ctx, 10*time.Second)
-if sha, err := exec.CommandContext(shaCtx, "git", "-C", cfg.Dir, "rev-parse", "HEAD").Output(); err == nil {
-currentSHA = strings.TrimSpace(string(sha))
-}
-shaCancel()
-runPostSyncCommand(ctx, cfg)
-runStacksSync(ctx, cfg, store, dockerClient)
-}
-
-if pullOnly {
-slog.Info("pull-only mode: skipping add/commit/push", "repo", repoName)
-if store != nil {
-store.UpdateRepo(state.RepoState{
-Name:     repoName,
-LastSync: time.Now(),
-LastSHA:  currentSHA,
-Status:   state.StatusOK,
-})
-}
-recordSyncSuccess(repoName)
-	metrics.RecordSync(cfg.Name, "success", time.Since(start))
-return
-}
-
-// Set git identity before committing
-setGitIdentity(ctx, cfg.Dir, appCfg.GitUserName, appCfg.GitUserEmail)
-
-addCtx, addCancel := context.WithTimeout(ctx, 30*time.Second)
-cmd = exec.CommandContext(addCtx, "git", "add", ".")
-cmd.Dir = cfg.Dir
-output, err = cmd.CombinedOutput()
-addCancel()
-if err != nil {
-recordError(fmt.Sprintf("Failed to add changes in %s: %v. Output: %s", cfg.Dir, err, string(output)))
-return
-}
-
-loc, err := time.LoadLocation(os.Getenv("TZ"))
-if err != nil {
-slog.Warn("failed to load timezone", "err", err)
-loc = time.UTC
-}
-commitCtx, commitCancel := context.WithTimeout(ctx, 30*time.Second)
-cmd = exec.CommandContext(commitCtx, "git", "commit", "-m", fmt.Sprintf("Automated commit %s", time.Now().In(loc).Format("2006-01-02 15:04:05")))
-cmd.Dir = cfg.Dir
-output, err = cmd.CombinedOutput()
-commitCancel()
-if err != nil {
-slog.Info("no changes to commit", "repo", repoName, "err", err)
-// Not a hard error — nothing to commit is normal.
-if store != nil {
-store.UpdateRepo(state.RepoState{
-Name:     repoName,
-LastSync: time.Now(),
-LastSHA:  currentSHA,
-Status:   state.StatusOK,
-})
-}
-recordSyncSuccess(repoName)
-	metrics.RecordSync(cfg.Name, "success", time.Since(start))
-return
-}
-
-// Refresh SHA after commit
-sha2Ctx, sha2Cancel := context.WithTimeout(ctx, 10*time.Second)
-if sha, err := exec.CommandContext(sha2Ctx, "git", "-C", cfg.Dir, "rev-parse", "HEAD").Output(); err == nil {
-currentSHA = strings.TrimSpace(string(sha))
-}
-sha2Cancel()
-
-pushCtx, pushCancel := context.WithTimeout(ctx, 120*time.Second)
-cmd = exec.CommandContext(pushCtx, "git", "push", cfg.Remote, cfg.Branch)
-cmd.Dir = cfg.Dir
-output, err = cmd.CombinedOutput()
-pushCancel()
-if err != nil {
-recordError(fmt.Sprintf("Failed to push in %s: %v. Output: %s", cfg.Dir, err, string(output)))
-return
-}
-
-slog.Info("successfully synced repo", "repo", repoName)
-if store != nil {
-store.UpdateRepo(state.RepoState{
-Name:     repoName,
-LastSync: time.Now(),
-LastSHA:  currentSHA,
-Status:   state.StatusOK,
-})
-}
-recordSyncSuccess(repoName)
-metrics.RecordSync(cfg.Name, "success", time.Since(start))
+	if store != nil {
+		store.UpdateRepo(state.RepoState{
+			Name:     repoName,
+			LastSync: time.Now(),
+			LastSHA:  newSHA,
+			Status:   state.StatusOK,
+		})
+	}
+	recordSyncSuccess(repoName)
+	metrics.RecordSync(repoName, "success", time.Since(start))
 }
 
 func main() {
@@ -810,7 +454,6 @@ func main() {
 	default:
 		logLevel.Set(slog.LevelInfo)
 	}
-
 	var handler slog.Handler
 	if strings.ToLower(os.Getenv("LOG_FORMAT")) == "text" {
 		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
@@ -819,145 +462,174 @@ func main() {
 	}
 	slog.SetDefault(slog.New(handler))
 
-err := setupSSH()
-if err != nil {
-slog.Error("SSH setup failed", "err", err)
-	os.Exit(1)
-}
-
-appCfg := loadAppConfig()
-
-if appCfg.PullOnly {
-slog.Info("pull-only mode enabled: skipping git add, commit, and push")
-}
-
-slog.Info("sync interval", "seconds", appCfg.SyncIntervalSeconds)
-
-// --- State store ---
-store := state.New()
-
-if strings.ToLower(os.Getenv("DEV_SEED")) == "true" {
-seedDevState(store)
-}
-store.SetInfisical(state.InfisicalState{
-Enabled: strings.ToLower(os.Getenv("INFISICAL_ENABLED")) == "true",
-Env:     os.Getenv("INFISICAL_ENV"),
-})
-
-// --- Docker client (used for container details and log streaming) ---
-var dockerClient *docker.Client
-if c, err := docker.New(); err == nil {
-dockerClient = c
-} else {
-slog.Warn("docker client unavailable, container details and log streaming disabled", "err", err)
-}
-
-ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-defer stop()
-
-var wg sync.WaitGroup
-
-// --- Startup stack scan ---
-// Populate the state store with known stacks at startup so the dashboard
-// shows containers immediately, even when no pull has occurred yet.
-if repoCfgs, err := loadRepoConfigs(appCfg); err == nil {
-for _, cfg := range repoCfgs {
-runStacksSync(ctx, cfg, store, dockerClient)
-}
-refreshContainers(ctx, store, &dockerClient)
-}
-
-// --- Dashboard server ---
-dashboardEnabled := strings.ToLower(os.Getenv("DASHBOARD_ENABLED")) == "true"
-syncTrigger := make(chan string, 16)
-
-if dashboardEnabled {
-dashPort := 8080
-if portStr := os.Getenv("DASHBOARD_PORT"); portStr != "" {
-if v, err := strconv.Atoi(portStr); err == nil && v > 0 {
-dashPort = v
-} else {
-slog.Warn("invalid DASHBOARD_PORT value, using default 8080", "value", portStr)
-}
-}
-
-srv := server.New(store, dockerClient, syncTrigger, dashPort)
-go srv.Start(ctx)
-}
-
-syncInterval := time.Duration(appCfg.SyncIntervalSeconds) * time.Second
-ticker := time.NewTicker(syncInterval)
-defer ticker.Stop()
-
-doSyncRound := func(cfgs []RepoConfig) {
-wg.Add(1)
-go func() {
-defer wg.Done()
-for _, cfg := range cfgs {
-if ctx.Err() != nil {
-return // shutdown in progress, stop starting new syncs
-}
-if shouldSkipSync(cfg.Name) {
-slog.Info("skipping sync (backoff)", "repo", cfg.Name)
-continue
-}
-syncRepo(ctx, cfg, appCfg, store, dockerClient)
-}
-refreshContainers(ctx, store, &dockerClient)
-}()
-wg.Wait() // keep sequential behaviour; WaitGroup lets shutdown detect completion
-}
-
-for {
-repoCfgs, err := loadRepoConfigs(appCfg)
-if err != nil {
-slog.Error("failed to get mounted volumes", "err", err)
+	// --- Bootstrap env vars ---
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		dbURL = "sqlite://stackd.db"
+	}
+	port := 8080
+	if portStr := os.Getenv("PORT"); portStr != "" {
+		if v, err := strconv.Atoi(portStr); err == nil && v > 0 {
+			port = v
+		} else {
+			slog.Warn("invalid PORT value, using default 8080", "value", portStr)
+		}
+	}
+	secretKey := os.Getenv("SECRET_KEY")
+	if secretKey == "" {
+		slog.Error("SECRET_KEY environment variable is required for encrypting sensitive configuration")
 		os.Exit(1)
+	}
+	cloneDir := os.Getenv("CLONE_DIR")
+	if cloneDir == "" {
+		cloneDir = "/var/lib/stackd/repos"
+	}
+
+	syncIntervalSeconds := 60
+	if v, err := strconv.Atoi(os.Getenv("SYNC_INTERVAL_SECONDS")); err == nil && v > 0 {
+		syncIntervalSeconds = v
+	}
+	syncInterval := time.Duration(syncIntervalSeconds) * time.Second
+
+	// --- Open DB ---
+	sqlDB, err := db.Open(dbURL)
+	if err != nil {
+		slog.Error("failed to open database", "err", err)
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
+
+	// --- Derive crypto key ---
+	cryptoKey, err := cryptoModule.DeriveKey(secretKey)
+	if err != nil {
+		slog.Error("failed to derive crypto key", "err", err)
+		os.Exit(1)
+	}
+
+	// --- Create clone dir ---
+	if err := os.MkdirAll(cloneDir, 0755); err != nil {
+		slog.Error("failed to create clone dir", "dir", cloneDir, "err", err)
+		os.Exit(1)
+	}
+
+	// --- State store ---
+	store := state.New()
+	if strings.ToLower(os.Getenv("DEV_SEED")) == "true" {
+		seedDevState(store)
+	}
+	store.SetInfisical(state.InfisicalState{
+		Enabled: strings.ToLower(os.Getenv("INFISICAL_ENABLED")) == "true",
+		Env:     os.Getenv("INFISICAL_ENV"),
+	})
+
+	// --- Docker client ---
+	var dockerClient *docker.Client
+	if c, err := docker.New(); err == nil {
+		dockerClient = c
+	} else {
+		slog.Warn("docker client unavailable, container details and log streaming disabled", "err", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var wg sync.WaitGroup
+
+	// --- Startup stack scan ---
+	startupRepos, err := db.ListRepos(ctx, sqlDB)
+	if err != nil {
+		slog.Error("failed to list repos from DB", "err", err)
+	} else {
+		for _, repo := range startupRepos {
+			if !repo.Enabled {
+				continue
+			}
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+		}
+		refreshContainers(ctx, store, &dockerClient)
+	}
+
+	// --- Dashboard server (always enabled) ---
+	syncTrigger := make(chan string, 16)
+	srv := server.New(store, dockerClient, syncTrigger, port, sqlDB, cryptoKey)
+	go srv.Start(ctx)
+
+	ticker := time.NewTicker(syncInterval)
+	defer ticker.Stop()
+
+	doSyncRound := func(repos []db.RepoDB) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, repo := range repos {
+				if ctx.Err() != nil {
+					return
+				}
+				if !repo.Enabled {
+					continue
+				}
+				if shouldSkipSync(repo.Name) {
+					slog.Info("skipping sync (backoff)", "repo", repo.Name)
+					continue
+				}
+				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+			}
+			refreshContainers(ctx, store, &dockerClient)
+		}()
+		wg.Wait()
+	}
+
+	for {
+		listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
+		repos, listErr := db.ListRepos(listCtx, sqlDB)
+		listCancel()
+		if listErr != nil {
+			slog.Error("failed to list repos", "err", listErr)
+			repos = nil
+		}
+
+		doSyncRound(repos)
+
+		select {
+		case <-ctx.Done():
+			slog.Info("shutdown signal received, waiting for in-flight operations to complete")
+			ticker.Stop()
+			waitDone := make(chan struct{})
+			go func() { wg.Wait(); close(waitDone) }()
+			select {
+			case <-waitDone:
+				slog.Info("all operations completed, shutting down cleanly")
+			case <-time.After(30 * time.Second):
+				slog.Warn("shutdown timeout reached, forcing exit")
+			}
+			return
+
+		case <-ticker.C:
+			// regular interval — loop back to sync all repos
+
+		case repoName := <-syncTrigger:
+		drainLoop:
+			for {
+				select {
+				case <-syncTrigger:
+				default:
+					break drainLoop
+				}
+			}
+			slog.Info("manual sync triggered", "repo", repoName)
+			resetBackoff(repoName)
+			for _, repo := range repos {
+				if repo.Name == repoName {
+					syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+					break
+				}
+			}
+			refreshContainers(ctx, store, &dockerClient)
+			ticker.Reset(syncInterval)
+		}
+	}
 }
 
-doSyncRound(repoCfgs)
-
-// Wait for the next tick or a manual sync trigger.
-select {
-case <-ctx.Done():
-slog.Info("shutdown signal received, waiting for in-flight operations to complete")
-ticker.Stop()
-waitDone := make(chan struct{})
-go func() { wg.Wait(); close(waitDone) }()
-select {
-case <-waitDone:
-slog.Info("all operations completed, shutting down cleanly")
-case <-time.After(30 * time.Second):
-slog.Warn("shutdown timeout reached, forcing exit")
-}
-return
-
-case <-ticker.C:
-// regular interval — loop back to sync all repos
-
-case repoName := <-syncTrigger:
-// drain any additional queued triggers so we don't double-sync
-drainLoop:
-for {
-select {
-case <-syncTrigger:
-default:
-break drainLoop
-}
-}
-slog.Info("manual sync triggered", "repo", repoName)
-resetBackoff(repoName) // manual sync always resets backoff
-for _, cfg := range repoCfgs {
-if cfg.Name == repoName {
-syncRepo(ctx, cfg, appCfg, store, dockerClient)
-break
-}
-}
-refreshContainers(ctx, store, &dockerClient)
-ticker.Reset(syncInterval)
-}
-}
-}
 
 func seedDevState(store *state.Store) {
 now := time.Now()
