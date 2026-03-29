@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'preact/hooks'
+import { useState, useEffect, useMemo, useCallback } from 'preact/hooks'
 import { AppGrid } from './components/AppGrid'
 import { AppDetail } from './components/AppDetail'
 import { Settings } from './components/Settings'
@@ -14,7 +14,7 @@ export function App() {
   // syncStatus: Map<repoName, { state: 'success'|'rateLimit'|'error', message?: string }>
   const [syncStatus, setSyncStatus] = useState({})
 
-  const fetchStatus = () => {
+  const fetchStatus = useCallback(async () => {
     fetch('/api/status')
       .then(r => r.json())
       .then(data => {
@@ -31,7 +31,7 @@ export function App() {
         document.title = errorCount > 0 ? `(${errorCount}) stackd` : 'stackd'
       })
       .catch(err => setError(err.message))
-  }
+  }, [])
 
   useEffect(() => {
     fetchStatus()

@@ -342,6 +342,18 @@
 .repo-header--flash-warn { border-left-color: var(--status-degraded) !important; }
 .repo-header--flash-err  { border-left-color: var(--status-stopped) !important; }
 
+/* ── Tablet: 40px minimum touch targets ──────────── */
+@media (max-width: 1024px) {
+  .repo-sync-btn {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  .stack-card {
+    min-height: 40px;
+  }
+}
+
 /* ── Mobile: larger sync button touch target ─────── */
 @media (max-width: 768px) {
   .sync-btn {

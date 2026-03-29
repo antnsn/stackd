@@ -208,19 +208,19 @@
 
 .status-dot--running {
   background: var(--status-running);
-  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-running) 20%, transparent);
   animation: dotGlow 2.4s var(--ease-out-quart) infinite;
 }
 
 .status-dot--stopped,
 .status-dot--exited {
   background: var(--status-stopped);
-  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-stopped) 20%, transparent);
 }
 
 .status-dot--restarting {
   background: var(--status-degraded);
-  box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-degraded) 20%, transparent);
 }
 
 /* ── Container detail shell ──────────────────────── */
@@ -387,6 +387,7 @@
 
 .log-filter-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .log-filter-clear {
@@ -395,7 +396,7 @@
   color: var(--text-muted);
   font-size: var(--text-xs);
   cursor: pointer;
-  padding: 2px 4px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   line-height: 1;
@@ -403,6 +404,11 @@
 
 .log-filter-clear:hover {
   color: var(--text-primary);
+}
+
+.log-filter-clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .log-filter-count {
