@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,17 +31,21 @@ type Server struct {
 	mux         *http.ServeMux
 	handler     http.Handler // final handler with all middlewares applied
 	syncLimiter *rateLimiter
+	db          *sql.DB
+	cryptoKey   []byte
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
 // dockerClient may be nil; log endpoints will return 503 in that case.
-func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- string, port int) *Server {
+func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- string, port int, sqlDB *sql.DB, cryptoKey []byte) *Server {
 	s := &Server{
 		store:       store,
 		docker:      dockerClient,
 		syncTrigger: syncTrigger,
 		addr:        fmt.Sprintf(":%d", port),
 		mux:         http.NewServeMux(),
+		db:          sqlDB,
+		cryptoKey:   cryptoKey,
 	}
 	s.registerRoutes()
 
