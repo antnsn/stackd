@@ -129,38 +129,49 @@ export function App() {
 
   return (
     <div class="app-shell">
-      <nav class="app-sidebar" aria-label="Main navigation">
+      <aside class="app-sidebar">
         <div class="sidebar-brand">
           <h1 class="sr-only">stackd</h1>
           <img src="/logo.svg" alt="stackd" class="app-logo" width="118" height="44" />
+          <button
+            class={`sidebar-mobile-settings${page === 'settings' ? ' active' : ''}`}
+            onClick={() => setPage(p => p === 'settings' ? 'dashboard' : 'settings')}
+            aria-label="Settings"
+          >
+            ⚙
+          </button>
         </div>
-        <div class="sidebar-nav">
-          <button
-            class={`sidebar-nav__btn ${page === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setPage('dashboard')}
-          >
-            Dashboard
-          </button>
-          <button
-            class={`sidebar-nav__btn ${page === 'settings' ? 'active' : ''}`}
-            onClick={() => setPage('settings')}
-          >
-            Settings
-          </button>
+        <div class="sidebar-body">
+          <AppGrid
+            repos={repos}
+            selectedStack={selectedStack}
+            syncingRepos={syncingRepos}
+            syncStatus={syncStatus}
+            onSelectStack={(stack) => { setSelectedStack(stack); setPage('dashboard') }}
+            onForceSync={handleForceSync}
+          />
         </div>
         <div class="sidebar-footer">
-          {freshnessLabel && (
-            <span class="freshness-label" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
-              {freshnessLabel}
-            </span>
-          )}
-          {infisical?.enabled && (
-            <span class="infisical-badge">Infisical · {infisical.env}</span>
-          )}
+          <button
+            class={`sidebar-settings-btn${page === 'settings' ? ' active' : ''}`}
+            onClick={() => setPage(p => p === 'settings' ? 'dashboard' : 'settings')}
+          >
+            <span aria-hidden="true">⚙</span> Settings
+          </button>
+          <div class="sidebar-meta">
+            {freshnessLabel && (
+              <span class="freshness-label" aria-live="polite" aria-label={`Data updated ${freshnessLabel}`}>
+                {freshnessLabel}
+              </span>
+            )}
+            {infisical?.enabled && (
+              <span class="infisical-badge">Infisical · {infisical.env}</span>
+            )}
+          </div>
         </div>
-      </nav>
+      </aside>
 
-      <div class="app-body">
+      <div class={`app-body${selectedStack || page === 'settings' ? ' app-body--active' : ''}`}>
         {error && (
           <div class="error-banner" role="alert">
             <span><span aria-hidden="true">⚠</span> Could not reach API: {error}</span>
@@ -179,7 +190,7 @@ export function App() {
                 <button
                   key={`${s.repoName}/${s.name}`}
                   class="health-banner__link"
-                  onClick={() => setSelectedStack(s)}
+                  onClick={() => { setSelectedStack(s); setPage('dashboard') }}
                 >
                   {s.repoName}/{s.name}
                 </button>
@@ -191,30 +202,20 @@ export function App() {
         <main class="app-content">
           {page === 'settings' ? (
             <Settings />
+          ) : selectedStack ? (
+            <div class="detail-panel">
+              <AppDetail
+                stack={selectedStack}
+                onClose={() => setSelectedStack(null)}
+                onRefresh={fetchStatus}
+                onForceSync={handleForceSync}
+                isSyncing={syncingRepos.has(selectedStack?.repoName)}
+              />
+            </div>
           ) : (
-            <>
-              <div class="grid-panel">
-                <AppGrid
-                  repos={repos}
-                  selectedStack={selectedStack}
-                  syncingRepos={syncingRepos}
-                  syncStatus={syncStatus}
-                  onSelectStack={setSelectedStack}
-                  onForceSync={handleForceSync}
-                />
-              </div>
-              {selectedStack && (
-                <div class="detail-panel">
-                  <AppDetail
-                    stack={selectedStack}
-                    onClose={() => setSelectedStack(null)}
-                    onRefresh={fetchStatus}
-                    onForceSync={handleForceSync}
-                    isSyncing={syncingRepos.has(selectedStack?.repoName)}
-                  />
-                </div>
-              )}
-            </>
+            <div class="empty-detail">
+              <p class="empty-detail__hint">Select a stack to inspect</p>
+            </div>
           )}
         </main>
       </div>
