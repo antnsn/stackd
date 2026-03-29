@@ -16,6 +16,7 @@ export function App() {
 
   const [lastFetched, setLastFetched] = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [loading, setLoading] = useState(true)
 
   const fetchStatus = useCallback(async () => {
     fetch('/api/status')
@@ -25,6 +26,7 @@ export function App() {
         setInfisical(data.infisical)
         setError(null)
         setLastFetched(Date.now())
+        setLoading(false)
         const errorCount = (data.repos || [])
           .flatMap(r => r.stacks || [])
           .filter(s => {
@@ -34,7 +36,7 @@ export function App() {
           }).length
         document.title = errorCount > 0 ? `(${errorCount}) stackd` : 'stackd'
       })
-      .catch(err => setError(err.message))
+      .catch(err => { setError(err.message); setLoading(false) })
   }, [])
 
   useEffect(() => {
@@ -198,7 +200,7 @@ export function App() {
           </div>
         )}
 
-        {!error && problemStacks.length > 0 && (
+        {!error && !loading && problemStacks.length > 0 && (
           <div class="health-banner health-banner--error" role="alert">
             <span class="health-banner__icon" aria-hidden="true">⚠</span>
             <span class="health-banner__text">
@@ -218,9 +220,22 @@ export function App() {
           </div>
         )}
 
+        {!error && !loading && repos.length > 0 && problemStacks.length === 0 && (
+          <div class="health-banner health-banner--ok" role="status">
+            <span class="health-banner__icon" aria-hidden="true">✓</span>
+            <span class="health-banner__text">All stacks running</span>
+          </div>
+        )}
+
         <main class="app-content">
           {page === 'settings' ? (
             <Settings />
+          ) : loading ? (
+            <div class="loading-skeleton">
+              <div class="skeleton-grid">
+                {[0,1,2,3].map(i => <div key={i} class="skeleton-card" style={{ '--sk-i': i }} />)}
+              </div>
+            </div>
           ) : selectedStack ? (
             <div class="detail-panel">
               <AppDetail
@@ -241,7 +256,12 @@ export function App() {
             />
           ) : (
             <div class="empty-detail">
-              <p class="empty-detail__hint">No repos configured</p>
+              <div class="empty-detail__icon" aria-hidden="true">⬡</div>
+              <p class="empty-detail__title">No repos configured</p>
+              <p class="empty-detail__hint">Add a repository to start monitoring your stacks.</p>
+              <button class="empty-detail__action" onClick={() => setPage('settings')}>
+                Go to Settings →
+              </button>
             </div>
           )}
         </main>

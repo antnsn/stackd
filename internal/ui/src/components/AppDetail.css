@@ -82,7 +82,22 @@
 
 /* Sync button in detail header — only shown on mobile where AppGrid is hidden */
 .detail-sync-btn {
-  display: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+  font-weight: var(--font-medium);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+}
+
+.detail-sync-btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
+.detail-sync-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Stack metadata grid ─────────────────────────── */

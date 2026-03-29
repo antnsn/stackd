@@ -248,18 +248,100 @@
   background: var(--bg-secondary);
 }
 
-/* Empty state when no stack selected */
+/* ── Loading skeleton ────────────────────────────── */
+.loading-skeleton {
+  flex: 1;
+  overflow: hidden;
+  padding: var(--space-6);
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton-card {
+  height: 120px;
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--border-subtle);
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--bg-tertiary) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  animation-delay: calc(var(--sk-i, 0) * 80ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-card { animation: none; background: var(--bg-secondary); }
+}
+
+/* ── Empty state ─────────────────────────────────── */
 .empty-detail {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-8);
+}
+
+.empty-detail__icon {
+  font-size: 3.2rem;
+  color: var(--text-muted);
+  opacity: 0.4;
+  line-height: 1;
+}
+
+.empty-detail__title {
+  font-family: var(--font-ui);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .empty-detail__hint {
-  color: var(--text-muted);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 280px;
+}
+
+.empty-detail__action {
+  margin-top: var(--space-2);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  min-height: 36px;
+  transition: background 0.1s;
+}
+
+.empty-detail__action:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.empty-detail__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ── Health banner ───────────────────────────────── */
