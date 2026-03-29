@@ -81,19 +81,15 @@ export function AppDetail({ stack, onClose, onRefresh }) {
                 {c.name}
               </button>
             ))}
-            <button
-              role="tab"
-              aria-selected={selectedContainer === '__compose__'}
-              class={`container-tab container-tab--compose ${selectedContainer === '__compose__' ? 'container-tab--active' : ''}`}
-              onClick={() => setSelectedContainer('__compose__')}
-            >
-              compose.yml
-            </button>
           </div>
-          {selectedContainer === '__compose__'
-            ? <ComposeViewer repoName={stack.repoName} stackName={stack.name} />
-            : container && <ContainerDetail container={container} onRefresh={onRefresh} />
-          }
+          {container && (
+            <ContainerDetail
+              container={container}
+              onRefresh={onRefresh}
+              repoName={stack.repoName}
+              stackName={stack.name}
+            />
+          )}
         </>
       ) : (
         <div class="empty-state-inline">
@@ -113,9 +109,9 @@ export function AppDetail({ stack, onClose, onRefresh }) {
 
 // ── ContainerDetail ───────────────────────────────────
 
-function ContainerDetail({ container, onRefresh }) {
+function ContainerDetail({ container, onRefresh, repoName, stackName }) {
   const [tab, setTab] = useState('logs')
-  const [actionState, setActionState] = useState(null) // 'loading'|{ok}|{err}
+  const [actionState, setActionState] = useState(null)
   const [activeAction, setActiveAction] = useState(null)
 
   const isRunning = container.status === 'running'
@@ -175,7 +171,7 @@ function ContainerDetail({ container, onRefresh }) {
         {actionState?.err && <span class="ctrl-feedback ctrl-feedback--err">{actionState.err}</span>}
       </div>
       <div class="info-tabs" role="tablist" aria-label="Container detail sections">
-        {[['logs', 'Logs'], ['env', 'Env'], ['info', 'Info']].map(([t, label]) => (
+        {[['logs', 'Logs'], ['env', 'Env'], ['info', 'Info'], ['compose', 'Compose']].map(([t, label]) => (
           <button
             key={t}
             role="tab"
@@ -187,9 +183,10 @@ function ContainerDetail({ container, onRefresh }) {
           </button>
         ))}
       </div>
-      {tab === 'logs' && <LogStream key={container.name} containerName={container.name} />}
-      {tab === 'env'  && <EnvVars envs={container.env} />}
-      {tab === 'info' && <ContainerInfo container={container} />}
+      {tab === 'logs'    && <LogStream key={container.name} containerName={container.name} />}
+      {tab === 'env'     && <EnvVars envs={container.env} />}
+      {tab === 'info'    && <ContainerInfo container={container} />}
+      {tab === 'compose' && <ComposeViewer repoName={repoName} stackName={stackName} />}
     </div>
   )
 }
