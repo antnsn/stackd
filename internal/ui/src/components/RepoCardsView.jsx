@@ -258,6 +258,12 @@ function ContainerRow({ container }) {
 const ACTIVITY_ICONS = { pulling: '⇩', applying: '↻', done: '✓', error: '✕' }
 const MAX_EVENTS = 12
 
+// Returns the key that uniquely identifies an in-progress operation.
+// "done"/"error" resolve the matching "pulling"/"applying" entry.
+function eventKey(ev) {
+  return ev.stack ? `${ev.repo}/${ev.stack}` : ev.repo
+}
+
 export function ActivityFeed() {
   const [events, setEvents] = useState([])
   const [visible, setVisible] = useState(false)
@@ -268,10 +274,25 @@ export function ActivityFeed() {
       try {
         const ev = JSON.parse(e.data)
         const id = Date.now() + Math.random()
-        setEvents(prev => [{ ...ev, id, ts: Date.now() }, ...prev].slice(0, MAX_EVENTS))
+        const key = eventKey(ev)
+        const isResolution = ev.type === 'done' || ev.type === 'error'
+
+        setEvents(prev => {
+          // Replace the in-progress entry for this key if it exists
+          const existingIdx = prev.findIndex(p => eventKey(p) === key)
+          let next
+          if (existingIdx >= 0) {
+            next = prev.slice()
+            next[existingIdx] = { ...ev, id, ts: Date.now() }
+          } else {
+            next = [{ ...ev, id, ts: Date.now() }, ...prev].slice(0, MAX_EVENTS)
+          }
+          return next
+        })
         setVisible(true)
-        // Auto-dismiss "done" events after 4s if no new events follow
-        if (ev.type === 'done') {
+
+        // Auto-remove resolved events after 4s
+        if (isResolution) {
           setTimeout(() => {
             setEvents(prev => prev.filter(p => p.id !== id))
           }, 4000)
