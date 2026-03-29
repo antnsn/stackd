@@ -112,7 +112,7 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
             title={isSyncing ? 'Syncing…' : 'Force sync: git pull + docker compose up'}
             disabled={isSyncing}
           >
-            <span aria-hidden="true">↻</span>
+            <span aria-hidden="true">↻</span> Sync
           </button>
         </div>
       </div>

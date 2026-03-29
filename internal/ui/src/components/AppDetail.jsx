@@ -409,16 +409,17 @@ function ContainerInfo({ container, lastOutput, lastError, repoName, stackName }
           )}
         </>
       )}
-      <ComposeViewer repoName={repoName} stackName={stackName} />
+      <ComposeViewer repoName={repoName} stackName={stackName} lastError={lastError} />
     </div>
   )
 }
 
 // ── ComposeViewer ─────────────────────────────────────
 
-function ComposeViewer({ repoName, stackName }) {
+function ComposeViewer({ repoName, stackName, lastError }) {
   const [content, setContent] = useState(null)
   const [error, setError] = useState(null)
+  const [expanded, setExpanded] = useState(!lastError)
 
   useEffect(() => {
     setContent(null)
@@ -429,13 +430,24 @@ function ComposeViewer({ repoName, stackName }) {
       .catch(e => setError(String(e)))
   }, [repoName, stackName])
 
-  if (error) return <div class="compose-error">Could not load compose file: {error}</div>
-  if (!content) return <div class="compose-loading">Loading…</div>
-
   return (
     <>
-      <div class="info-section-divider">compose.yml</div>
-      <pre class="compose-viewer">{content}</pre>
+      <div
+        class="info-section-divider"
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded(e => !e)}
+        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setExpanded(ex => !ex)}
+        style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none"
+        aria-expanded={expanded}
+      >
+        compose.yml <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+      </div>
+      {expanded && (
+        error ? <div class="compose-error">Could not load compose file: {error}</div>
+        : !content ? <div class="compose-loading">Loading…</div>
+        : <pre class="compose-viewer">{content}</pre>
+      )}
     </>
   )
 }

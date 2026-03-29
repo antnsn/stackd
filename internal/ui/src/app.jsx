@@ -143,7 +143,7 @@ export function App() {
         </div>
       )}
 
-      {!error && (problemStacks.length > 0 ? (
+      {!error && problemStacks.length > 0 && (
         <div class="health-banner health-banner--error" role="alert">
           <span class="health-banner__icon" aria-hidden="true">⚠</span>
           <span class="health-banner__text">
@@ -161,12 +161,7 @@ export function App() {
             ))}
           </div>
         </div>
-      ) : repos.length > 0 ? (
-        <div class="health-banner health-banner--ok" role="status">
-          <span class="health-banner__icon" aria-hidden="true">✓</span>
-          <span class="health-banner__text">All stacks running</span>
-        </div>
-      ) : null)}
+      )}
 
       <main class="app-container">
         {page === 'settings' ? (

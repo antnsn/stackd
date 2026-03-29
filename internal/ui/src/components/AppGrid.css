@@ -125,11 +125,13 @@
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  width: 28px;
+  width: auto;
   height: 28px;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: var(--text-xl);
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,9 +158,12 @@
 }
 
 .sync-btn--spinning {
-  animation: spin 0.8s linear infinite;
   color: var(--accent);
   border-color: var(--accent-border);
+}
+
+.sync-btn--spinning span {
+  animation: spin 0.8s linear infinite;
 }
 
 /* ── Stack list ──────────────────────────────────── */
@@ -339,9 +344,10 @@
 /* ── Mobile: larger sync button touch target ─────── */
 @media (max-width: 768px) {
   .sync-btn {
-    width: 44px;
+    width: auto;
     height: 44px;
-    font-size: var(--text-2xl);
+    padding: 0 var(--space-3);
+    font-size: var(--text-base);
   }
 }
 
