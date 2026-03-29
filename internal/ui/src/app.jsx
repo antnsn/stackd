@@ -111,6 +111,7 @@ export function App() {
   return (
     <div class="app-shell">
       <header class="app-header">
+        <h1 class="sr-only">stackd</h1>
         <div class="app-header__brand">
           <img src="/logo.svg" alt="stackd" class="app-logo" width="97" height="36" />
         </div>
@@ -167,7 +168,7 @@ export function App() {
         </div>
       ) : null)}
 
-      <div class="app-container">
+      <main class="app-container">
         {page === 'settings' ? (
           <Settings />
         ) : (
@@ -195,7 +196,7 @@ export function App() {
             )}
           </>
         )}
-      </div>
+      </main>
     </div>
   )
 }
