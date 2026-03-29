@@ -70,8 +70,9 @@
 }
 
 .repo-sync-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .repo-sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -474,8 +475,8 @@
 }
 
 .stack-card-apply:hover {
-  color: var(--indigo);
-  border-color: var(--indigo);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .stack-card-apply--spinning span {

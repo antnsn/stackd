@@ -93,6 +93,7 @@
 .detail-sync-btn:not(:disabled):hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .detail-sync-btn:disabled {
@@ -1000,8 +1001,8 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .terminal-reconnect-btn:hover {
-  border-color: var(--indigo);
-  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  color: var(--accent);
 }
 
 .terminal-panel {
