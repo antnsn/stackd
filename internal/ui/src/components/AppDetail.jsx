@@ -58,6 +58,12 @@ export function AppDetail({ stack, onClose, onRefresh }) {
             <span class="meta-value meta-value--mono">{stack.stackDir}</span>
           </div>
         )}
+        {stack.lastError && (
+          <div class="meta-item meta-item--error">
+            <span class="meta-label">Error</span>
+            <pre class="meta-value meta-value--error-detail">{stack.lastError}</pre>
+          </div>
+        )}
       </div>
 
       {containers.length > 0 ? (

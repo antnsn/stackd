@@ -117,10 +117,6 @@ function RepoGroup({ repo, sortOrder, onSortChange, selectedStack, isSyncing, re
         </div>
       </div>
 
-      {repo.lastError && (
-        <div class="repo-error" role="alert">{repo.lastError}</div>
-      )}
-
       <div class="grid-sort-bar">
         <label for={`stack-sort-${repo.name}`} class="sort-label">Sort</label>
         <select
@@ -186,12 +182,6 @@ function StackCard({ stack, isSelected, onSelect }) {
           <span class="stack-last-apply">{formatRelative(stack.lastApply)}</span>
         )}
       </div>
-      {stack.lastError && (
-        <div class="stack-error" title={stack.lastError}>
-          <span class="stack-error__icon" aria-hidden="true">⚠</span>
-          {stack.lastError.split('\n')[0]}
-        </div>
-      )}
     </button>
   )
 }
