@@ -8,7 +8,7 @@
 
 /* ── Unified sidebar ─────────────────────────────── */
 .app-sidebar {
-  width: clamp(240px, 22vw, 320px);
+  width: clamp(200px, 18vw, 260px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
