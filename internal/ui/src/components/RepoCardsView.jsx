@@ -255,6 +255,19 @@ function eventKey(ev) {
 export function ActivityFeed() {
   const [events, setEvents] = useState([])
   const [visible, setVisible] = useState(false)
+  const [fading, setFading] = useState(false)
+  const fadeTimer = useRef(null)
+
+  // When events list empties, start a fade-out then hide
+  useEffect(() => {
+    if (visible && events.length === 0) {
+      fadeTimer.current = setTimeout(() => {
+        setFading(true)
+        setTimeout(() => { setFading(false); setVisible(false) }, 400)
+      }, 800)
+    }
+    return () => clearTimeout(fadeTimer.current)
+  }, [events, visible])
 
   useEffect(() => {
     const es = new EventSource('/api/activity')
@@ -265,8 +278,9 @@ export function ActivityFeed() {
         const key = eventKey(ev)
         const isResolution = ev.type === 'done' || ev.type === 'error'
 
+        setFading(false)
+        clearTimeout(fadeTimer.current)
         setEvents(prev => {
-          // Replace the in-progress entry for this key if it exists
           const existingIdx = prev.findIndex(p => eventKey(p) === key)
           let next
           if (existingIdx >= 0) {
@@ -294,7 +308,7 @@ export function ActivityFeed() {
   if (!visible || events.length === 0) return null
 
   return (
-    <div class="activity-feed" role="log" aria-live="polite" aria-label="Activity">
+    <div class={`activity-feed${fading ? ' activity-feed--fading' : ''}`} role="log" aria-live="polite" aria-label="Activity">
       <div class="activity-feed__header">
         <span class="activity-feed__title">Activity</span>
         <button class="activity-feed__close" onClick={() => setVisible(false)} aria-label="Dismiss">×</button>

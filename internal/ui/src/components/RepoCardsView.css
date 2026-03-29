@@ -460,6 +460,13 @@
   box-shadow: 0 8px 24px color-mix(in srgb, black 40%, transparent);
   overflow: hidden;
   animation: feed-in 0.2s ease;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.activity-feed--fading {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
 }
 
 @keyframes feed-in {
