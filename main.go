@@ -676,15 +676,61 @@ func main() {
 	syncTrigger := make(chan string, 16)
 	srv := server.New(store, dockerClient, syncTrigger, port, sqlDB, cryptoKey, activityBus)
 
-	// Wire per-stack apply: look up stack in store, then call applyStack.
+	// Wire per-stack apply: git pull the repo, then apply only the target stack.
 	srv.SetApplyStack(func(repoName, stackName string) {
 		st, ok := store.GetStack(repoName, stackName)
 		if !ok {
 			return
 		}
+		repoCtx, repoCancel := context.WithTimeout(ctx, 10*time.Second)
+		repoDB, err := db.GetRepo(repoCtx, sqlDB, repoName)
+		repoCancel()
+		if err != nil {
+			slog.Error("applyStack: repo not found in db", "repo", repoName, "err", err)
+			return
+		}
 		settingsCtx, settingsCancel := context.WithTimeout(ctx, 5*time.Second)
 		infCfg := loadInfisicalFromDB(settingsCtx, sqlDB, cryptoKey)
 		settingsCancel()
+
+		// Build git auth options (mirrors syncRepoFromDB).
+		opts := git.AuthOpts{Type: repoDB.AuthType}
+		switch repoDB.AuthType {
+		case "ssh":
+			if repoDB.SSHKeyID != "" {
+				keyCtx, keyCancel := context.WithTimeout(ctx, 10*time.Second)
+				sshKey, keyErr := db.GetSSHKey(keyCtx, sqlDB, repoDB.SSHKeyID)
+				keyCancel()
+				if keyErr == nil {
+					if privKey, decErr := cryptoModule.Decrypt(cryptoKey, sshKey.PrivateKeyEnc); decErr == nil {
+						keyPath := fmt.Sprintf("/tmp/stackd-key-%s", repoDB.ID)
+						if writeErr := os.WriteFile(keyPath, []byte(privKey), 0600); writeErr == nil {
+							defer os.Remove(keyPath)
+							opts.SSHKeyPath = keyPath
+						}
+					}
+				}
+			}
+		case "pat":
+			if repoDB.PATEnc != "" {
+				if pat, decErr := cryptoModule.Decrypt(cryptoKey, repoDB.PATEnc); decErr == nil {
+					opts.PAT = pat
+				}
+			}
+		}
+
+		// Pull the repo so we always apply the latest commit.
+		destDir := filepath.Join(cloneDir, repoDB.Name)
+		if activityBus != nil {
+			activityBus.Publish(state.ActivityEvent{Type: "pulling", Repo: repoName, Msg: "Pulling " + repoName})
+		}
+		pullCtx, pullCancel := context.WithTimeout(ctx, 120*time.Second)
+		_ = git.Clone(pullCtx, repoDB.URL, destDir, opts)
+		pullCancel()
+		if activityBus != nil {
+			activityBus.Publish(state.ActivityEvent{Type: "done", Repo: repoName, Msg: repoName + " up to date"})
+		}
+
 		applyStack(ctx, st.StackDir, stackName, repoName, store, dockerClient, infCfg, activityBus)
 		refreshContainers(ctx, store, &dockerClient)
 	})
