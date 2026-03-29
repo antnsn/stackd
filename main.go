@@ -427,6 +427,7 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 				recordError(fmt.Sprintf("write SSH key file: %v", err))
 				return
 			}
+			defer os.Remove(keyPath)
 			opts.SSHKeyPath = keyPath
 		}
 	case "pat":
