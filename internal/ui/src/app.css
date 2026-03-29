@@ -40,13 +40,13 @@
 /* P1-3 fix: use --accent-border instead of hardcoded cyan rgba */
 .infisical-badge {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--accent);
   background: var(--accent-dim);
   border: 1px solid var(--accent-border);
   padding: 3px 10px;
   border-radius: var(--radius-md);
-  letter-spacing: 0.2px;
+  letter-spacing: var(--tracking-wide);
 }
 
 /* ── Error banner ────────────────────────────────── */
@@ -58,7 +58,7 @@
   background: rgba(248, 81, 73, 0.1);
   border-bottom: 1px solid rgba(248, 81, 73, 0.3);
   color: var(--status-stopped);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-family: var(--font-ui);
   flex-shrink: 0;
 }
@@ -70,7 +70,7 @@
   padding: 4px 12px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: var(--font-ui);
   /* P1-1 fix: specific properties only, not transition: all */
   transition: background 0.1s;
@@ -133,13 +133,13 @@
   }
 
   .infisical-badge {
-    font-size: 11px;
+    font-size: var(--text-xs);
     padding: 2px 8px;
   }
 
   .app-nav__btn {
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
 
   .app-container {
@@ -180,7 +180,7 @@
   border: none;
   color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-base);
   padding: 5px 12px;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -195,7 +195,7 @@
 .app-nav__btn.active {
   background: var(--accent-dim);
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--font-semibold);
 }
 
 .app-nav__btn:focus-visible {

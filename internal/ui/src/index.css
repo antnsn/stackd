@@ -1,3 +1,7 @@
+html {
+  font-size: 62.5%; /* 1rem = 10px at browser default 16px — scales with user prefs */
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -30,6 +34,26 @@ html, body, #app {
   --font-ui:   'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
+  /* ── Type scale ──────────────────────────────── */
+  /* Base: 1rem = 10px (html at 62.5%). Scales with browser font preferences. */
+  --text-xs:   1.1rem;  /* 11px — min readable; labels, timestamps, captions */
+  --text-sm:   1.2rem;  /* 12px — UI chrome: tabs, buttons, secondary text   */
+  --text-base: 1.3rem;  /* 13px — primary body, values, form inputs          */
+  --text-lg:   1.4rem;  /* 14px — card names, subheadings                    */
+  --text-xl:   1.5rem;  /* 15px — section headings, repo names               */
+  --text-2xl:  1.8rem;  /* 18px — panel titles, page headings                */
+
+  /* ── Font weights ─────────────────────────────── */
+  --font-normal:   400;
+  --font-medium:   500;
+  --font-semibold: 600;
+  --font-bold:     700;
+
+  /* ── Letter spacing ───────────────────────────── */
+  /* em-relative so tracking scales with font size  */
+  --tracking-wide:  0.04em;  /* subtle open — mono labels, badges, SHA       */
+  --tracking-wider: 0.06em;  /* uppercase micro labels, section headers      */
+
   /* ── Brand accent — electric indigo ─────────── */
   /* Used for actions, focus rings, and brand only. */
   /* Never reuse for status indicators.            */
@@ -57,10 +81,10 @@ html, body, #app {
 
 body {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 1.3rem;
   color: var(--text-primary);
   background: var(--bg-primary);
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Suppress default blue tap highlight on mobile */
