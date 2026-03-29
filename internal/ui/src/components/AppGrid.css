@@ -396,8 +396,8 @@
   font-family: var(--font-ui);
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid transparent;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 3px 22px 3px 8px;
   cursor: pointer;
