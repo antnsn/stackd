@@ -39,7 +39,7 @@ func GetSSHKey(ctx context.Context, db *sql.DB, id string) (SSHKeyDB, error) {
 	var k SSHKeyDB
 	var createdAt string
 	err := db.QueryRowContext(ctx,
-		`SELECT id, name, private_key_enc, public_key, created_at FROM ssh_keys WHERE id=?`, id,
+		Rebind(`SELECT id, name, private_key_enc, public_key, created_at FROM ssh_keys WHERE id=?`), id,
 	).Scan(&k.ID, &k.Name, &k.PrivateKeyEnc, &k.PublicKey, &createdAt)
 	if err != nil {
 		return SSHKeyDB{}, fmt.Errorf("getSSHKey: %w", err)
@@ -54,7 +54,7 @@ func CreateSSHKey(ctx context.Context, db *sql.DB, k SSHKeyDB) error {
 	}
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO ssh_keys (id, name, private_key_enc, public_key, created_at) VALUES (?, ?, ?, ?, ?)`,
+		Rebind(`INSERT INTO ssh_keys (id, name, private_key_enc, public_key, created_at) VALUES (?, ?, ?, ?, ?)`),
 		k.ID, k.Name, k.PrivateKeyEnc, k.PublicKey, now,
 	)
 	if err != nil {
@@ -64,7 +64,7 @@ func CreateSSHKey(ctx context.Context, db *sql.DB, k SSHKeyDB) error {
 }
 
 func DeleteSSHKey(ctx context.Context, db *sql.DB, id string) error {
-	_, err := db.ExecContext(ctx, `DELETE FROM ssh_keys WHERE id=?`, id)
+	_, err := db.ExecContext(ctx, Rebind(`DELETE FROM ssh_keys WHERE id=?`), id)
 	if err != nil {
 		return fmt.Errorf("deleteSSHKey: %w", err)
 	}

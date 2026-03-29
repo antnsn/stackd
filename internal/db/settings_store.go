@@ -11,7 +11,7 @@ func GetSetting(ctx context.Context, db *sql.DB, key string) (value string, sens
 	var sensitiveInt int
 	var nullValue sql.NullString
 	err = db.QueryRowContext(ctx,
-		`SELECT value, sensitive FROM settings WHERE key=?`, key,
+		Rebind(`SELECT value, sensitive FROM settings WHERE key=?`), key,
 	).Scan(&nullValue, &sensitiveInt)
 	if err != nil {
 		return "", false, fmt.Errorf("getSetting %q: %w", key, err)
@@ -22,7 +22,7 @@ func GetSetting(ctx context.Context, db *sql.DB, key string) (value string, sens
 func SetSetting(ctx context.Context, db *sql.DB, key, value string) error {
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
-		`UPDATE settings SET value=?, updated_at=? WHERE key=?`, value, now, key,
+		Rebind(`UPDATE settings SET value=?, updated_at=? WHERE key=?`), value, now, key,
 	)
 	if err != nil {
 		return fmt.Errorf("setSetting %q: %w", key, err)
