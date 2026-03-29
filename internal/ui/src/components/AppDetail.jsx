@@ -65,6 +65,22 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, isSyncing })
             <span class="meta-value">{formatRelative(stack.lastApply)}</span>
           </div>
         )}
+        {stack.infisicalMode ? (
+          <div class="meta-item">
+            <span class="meta-label">Secrets</span>
+            <span class="meta-value meta-value--infisical">
+              🔑 Infisical
+              <span class="meta-infisical-mode">
+                {stack.infisicalMode === 'per-stack' ? 'per-stack' : 'global'}
+              </span>
+            </span>
+          </div>
+        ) : (
+          <div class="meta-item">
+            <span class="meta-label">Secrets</span>
+            <span class="meta-value meta-value--muted">none</span>
+          </div>
+        )}
         {stack.stackDir && (
           <div class="meta-item">
             <span class="meta-label">Directory</span>

@@ -160,6 +160,17 @@ func extractErrorSummary(output string, fallback string) string {
 // "docker compose up -d" or an "infisical run -- docker compose up -d" command depending
 // on the INFISICAL_ENABLED env var and available credentials. The provided ctx is used
 // directly, so callers should set an appropriate deadline before calling.
+func infisicalMode(stackPath string, cfg InfisicalConfig) string {
+	tomlPath := filepath.Join(stackPath, "infisical.toml")
+	if _, err := os.Stat(tomlPath); err == nil {
+		return "per-stack"
+	}
+	if cfg.Token != "" {
+		return "global"
+	}
+	return ""
+}
+
 func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg InfisicalConfig) *exec.Cmd {
 	tomlPath := filepath.Join(stackPath, "infisical.toml")
 	_, tomlErr := os.Stat(tomlPath)
@@ -282,12 +293,13 @@ slog.Info("stack compose output", "stack", stackName, "output", outputStr)
 
 if store != nil {
 st := state.StackState{
-Name:       stackName,
-RepoName:   repoName,
-StackDir:   stackPath,
-LastApply:  time.Now(),
-LastOutput: outputStr,
-Containers: []state.ContainerDetail{},
+Name:          stackName,
+RepoName:      repoName,
+StackDir:      stackPath,
+LastApply:     time.Now(),
+LastOutput:    outputStr,
+Containers:    []state.ContainerDetail{},
+InfisicalMode: infisicalMode(stackPath, infisicalCfg),
 }
 if err != nil {
 st.Status = state.ApplyError

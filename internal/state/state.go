@@ -41,14 +41,15 @@ type ContainerDetail struct {
 }
 
 type StackState struct {
-	Name       string            `json:"name"`
-	RepoName   string            `json:"repoName"`
-	StackDir   string            `json:"stackDir,omitempty"`
-	LastApply  time.Time         `json:"lastApply"`
-	Status     ApplyStatus       `json:"status"`
-	LastOutput string            `json:"lastOutput,omitempty"`
-	LastError  string            `json:"lastError,omitempty"`
-	Containers []ContainerDetail `json:"containers"`
+	Name          string            `json:"name"`
+	RepoName      string            `json:"repoName"`
+	StackDir      string            `json:"stackDir,omitempty"`
+	LastApply     time.Time         `json:"lastApply"`
+	Status        ApplyStatus       `json:"status"`
+	LastOutput    string            `json:"lastOutput,omitempty"`
+	LastError     string            `json:"lastError,omitempty"`
+	Containers    []ContainerDetail `json:"containers"`
+	InfisicalMode string            `json:"infisicalMode,omitempty"` // "": none, "global": global token, "per-stack": infisical.toml
 }
 
 type InfisicalState struct {

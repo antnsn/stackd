@@ -192,6 +192,15 @@ function StackCard({ stack, onSelect, index }) {
     >
       <div class="stack-card-main__header">
         <span class="stack-card-main__name">{stack.name}</span>
+        {stack.infisicalMode && (
+          <span
+            class={`stack-card-main__infisical stack-card-main__infisical--${stack.infisicalMode}`}
+            title={stack.infisicalMode === 'per-stack' ? 'Secrets: infisical.toml (per-stack)' : 'Secrets: Infisical (global token)'}
+            aria-label={`Infisical secrets: ${stack.infisicalMode}`}
+          >
+            🔑
+          </span>
+        )}
         <span class="stack-card-main__badge">{status}</span>
       </div>
 

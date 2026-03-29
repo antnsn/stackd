@@ -338,6 +338,15 @@
   flex-shrink: 0;
 }
 
+.stack-card-main__infisical {
+  font-size: 1.0rem;
+  line-height: 1;
+  opacity: 0.65;
+  flex-shrink: 0;
+  cursor: help;
+  margin-left: var(--space-1);
+}
+
 .stack-card-main--running  .stack-card-main__badge { color: var(--status-running);  background: color-mix(in srgb, var(--status-running)  22%, transparent); }
 .stack-card-main--stopped  .stack-card-main__badge,
 .stack-card-main--exited   .stack-card-main__badge { color: var(--status-stopped);  background: color-mix(in srgb, var(--status-stopped)  22%, transparent); }
