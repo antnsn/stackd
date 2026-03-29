@@ -1,6 +1,6 @@
 module stackd
 
-go 1.25.0
+go 1.25.8
 
 require (
 	github.com/docker/docker v28.5.2+incompatible
