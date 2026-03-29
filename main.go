@@ -37,6 +37,13 @@ const maxSyncFailures = 10
 var repoBackoffs sync.Map // key: repo name (string), value: *syncBackoff
 var repoLocks sync.Map   // key: repo name (string), value: *sync.Mutex
 
+// InfisicalConfig holds Infisical credentials loaded from DB settings.
+type InfisicalConfig struct {
+	Token string
+	Env   string
+	URL   string
+}
+
 func getBackoff(repoName string) *syncBackoff {
 v, _ := repoBackoffs.LoadOrStore(repoName, &syncBackoff{})
 return v.(*syncBackoff)
@@ -125,42 +132,33 @@ func redactSecretEnv(key, value string) string {
 // "docker compose up -d" or an "infisical run -- docker compose up -d" command depending
 // on the INFISICAL_ENABLED env var and available credentials. The provided ctx is used
 // directly, so callers should set an appropriate deadline before calling.
-func buildComposeCmd(ctx context.Context, stackPath, stackName string) *exec.Cmd {
-if strings.ToLower(os.Getenv("INFISICAL_ENABLED")) != "true" {
-slog.Info("applying stack", "stack", stackName, "infisical", false)
-return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
-}
+func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg InfisicalConfig) *exec.Cmd {
+	tomlPath := filepath.Join(stackPath, "infisical.toml")
+	_, tomlErr := os.Stat(tomlPath)
+	hasToml := tomlErr == nil
 
-args := []string{"run"}
-configured := false
+	if !hasToml && cfg.Token == "" {
+		slog.Info("applying stack", "stack", stackName, "infisical", false)
+		return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
+	}
 
-tomlPath := filepath.Join(stackPath, "infisical.toml")
-if _, err := os.Stat(tomlPath); err == nil {
-args = append(args, "--config="+tomlPath)
-slog.Info("stack using per-stack infisical.toml", "stack", stackName)
-configured = true
-} else if token := os.Getenv("INFISICAL_TOKEN"); token != "" {
-args = append(args, "--token="+token)
-infisicalEnv := os.Getenv("INFISICAL_ENV")
-if infisicalEnv == "" {
-infisicalEnv = "prod"
-}
-args = append(args, "--env="+infisicalEnv)
-slog.Info("stack using global infisical token", "stack", stackName, "env", infisicalEnv)
-configured = true
-} else {
-slog.Warn("INFISICAL_ENABLED=true but no credentials found, applying without secrets injection", "stack", stackName)
-}
+	if hasToml {
+		args := []string{"run", "--config=" + tomlPath}
+		if cfg.URL != "" {
+			args = append(args, "--domain="+cfg.URL)
+		}
+		args = append(args, "--", "docker", "compose", "up", "-d")
+		slog.Info("stack using per-stack infisical.toml", "stack", stackName)
+		return exec.CommandContext(ctx, "infisical", args...)
+	}
 
-if configured {
-if infisicalURL := os.Getenv("INFISICAL_URL"); infisicalURL != "" {
-args = append(args, "--domain="+infisicalURL)
-}
-args = append(args, "--", "docker", "compose", "up", "-d")
-return exec.CommandContext(ctx, "infisical", args...)
-}
-
-return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
+	args := []string{"run", "--token=" + cfg.Token, "--env=" + cfg.Env}
+	if cfg.URL != "" {
+		args = append(args, "--domain="+cfg.URL)
+	}
+	args = append(args, "--", "docker", "compose", "up", "-d")
+	slog.Info("stack using global infisical token", "stack", stackName, "env", cfg.Env)
+	return exec.CommandContext(ctx, "infisical", args...)
 }
 
 // refreshContainers updates container details for all stacks whose StackDir is
@@ -230,7 +228,7 @@ func latestStartedAt(containers []state.ContainerDetail) time.Time {
 }
 
 
-func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client) {
+func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
 if store != nil {
 store.UpdateStack(state.StackState{
 Name:       stackName,
@@ -243,7 +241,7 @@ Containers: []state.ContainerDetail{},
 
 applyCtx, applyCancel := context.WithTimeout(ctx, 300*time.Second)
 defer applyCancel()
-cmd := buildComposeCmd(applyCtx, stackPath, stackName)
+cmd := buildComposeCmd(applyCtx, stackPath, stackName, infisicalCfg)
 cmd.Dir = stackPath
 output, err := cmd.CombinedOutput()
 outputStr := string(output)
@@ -309,7 +307,7 @@ slog.Info("stack applied successfully", "stack", stackName)
 
 
 // runStacksSync discovers and applies all docker-compose stacks in stacksDir.
-func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, dockerClient *docker.Client) {
+func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
 	if stacksDir == "" {
 		return
 	}
@@ -336,14 +334,19 @@ func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state
 			slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", repoName)
 			continue
 		}
-		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient)
+		applyStack(ctx, stackPath, stackName, repoName, store, dockerClient, infisicalCfg)
 	}
 }
 
 // syncRepoFromDB clones or pulls the repo and applies stacks if the SHA changed.
-func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, syncInterval time.Duration, store *state.Store, dockerClient *docker.Client) {
+func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, dockerClient *docker.Client, infisicalCfg InfisicalConfig) {
 	repoName := repo.Name
 	start := time.Now()
+
+	syncInterval := time.Duration(repo.SyncInterval) * time.Second
+	if syncInterval <= 0 {
+		syncInterval = 60 * time.Second
+	}
 
 	if store != nil {
 		existing, ok := store.GetRepo(repoName)
@@ -426,7 +429,7 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 
 	if newSHA != oldSHA || oldSHA == "" {
 		stacksDir := filepath.Join(destDir, repo.StacksDir)
-		runStacksSync(ctx, stacksDir, repoName, store, dockerClient)
+		runStacksSync(ctx, stacksDir, repoName, store, dockerClient, infisicalCfg)
 	}
 
 	if store != nil {
@@ -439,6 +442,27 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 	}
 	recordSyncSuccess(repoName)
 	metrics.RecordSync(repoName, "success", time.Since(start))
+}
+
+func loadInfisicalFromDB(ctx context.Context, sqlDB *sql.DB, cryptoKey []byte) InfisicalConfig {
+	cfg := InfisicalConfig{Env: "prod"}
+	settings, err := db.GetAllSettings(ctx, sqlDB)
+	if err != nil {
+		slog.Warn("failed to load settings from DB", "err", err)
+		return cfg
+	}
+	if v := settings["infisical_env"]; v != "" {
+		cfg.Env = v
+	}
+	cfg.URL = settings["infisical_url"]
+	// GetAllSettings masks sensitive values; fetch token separately
+	tokenEnc, _, err := db.GetSetting(ctx, sqlDB, "infisical_token")
+	if err == nil && tokenEnc != "" {
+		if token, err := cryptoModule.Decrypt(cryptoKey, tokenEnc); err == nil {
+			cfg.Token = token
+		}
+	}
+	return cfg
 }
 
 func main() {
@@ -485,11 +509,7 @@ func main() {
 		cloneDir = "/var/lib/stackd/repos"
 	}
 
-	syncIntervalSeconds := 60
-	if v, err := strconv.Atoi(os.Getenv("SYNC_INTERVAL_SECONDS")); err == nil && v > 0 {
-		syncIntervalSeconds = v
-	}
-	syncInterval := time.Duration(syncIntervalSeconds) * time.Second
+	syncInterval := 60 * time.Second
 
 	// --- Open DB ---
 	sqlDB, err := db.Open(dbURL)
@@ -517,10 +537,12 @@ func main() {
 	if strings.ToLower(os.Getenv("DEV_SEED")) == "true" {
 		seedDevState(store)
 	}
-	store.SetInfisical(state.InfisicalState{
-		Enabled: strings.ToLower(os.Getenv("INFISICAL_ENABLED")) == "true",
-		Env:     os.Getenv("INFISICAL_ENV"),
-	})
+	{
+		initSettingsCtx, initSettingsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		infCfg := loadInfisicalFromDB(initSettingsCtx, sqlDB, cryptoKey)
+		initSettingsCancel()
+		store.SetInfisical(state.InfisicalState{Enabled: infCfg.Token != "", Env: infCfg.Env})
+	}
 
 	// --- Docker client ---
 	var dockerClient *docker.Client
@@ -540,11 +562,14 @@ func main() {
 	if err != nil {
 		slog.Error("failed to list repos from DB", "err", err)
 	} else {
+		startupSettingsCtx, startupSettingsCancel := context.WithTimeout(ctx, 5*time.Second)
+		startupInfCfg := loadInfisicalFromDB(startupSettingsCtx, sqlDB, cryptoKey)
+		startupSettingsCancel()
 		for _, repo := range startupRepos {
 			if !repo.Enabled {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, startupInfCfg)
 		}
 		refreshContainers(ctx, store, &dockerClient)
 	}
@@ -557,7 +582,7 @@ func main() {
 	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
 
-	doSyncRound := func(repos []db.RepoDB) {
+	doSyncRound := func(repos []db.RepoDB, infisicalCfg InfisicalConfig) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -572,7 +597,7 @@ func main() {
 					slog.Info("skipping sync (backoff)", "repo", repo.Name)
 					continue
 				}
-				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, infisicalCfg)
 			}
 			refreshContainers(ctx, store, &dockerClient)
 		}()
@@ -588,7 +613,12 @@ func main() {
 			repos = nil
 		}
 
-		doSyncRound(repos)
+		settingsCtx, settingsCancel := context.WithTimeout(ctx, 5*time.Second)
+		infCfg := loadInfisicalFromDB(settingsCtx, sqlDB, cryptoKey)
+		settingsCancel()
+		store.SetInfisical(state.InfisicalState{Enabled: infCfg.Token != "", Env: infCfg.Env})
+
+		doSyncRound(repos, infCfg)
 
 		select {
 		case <-ctx.Done():
@@ -618,9 +648,12 @@ func main() {
 			}
 			slog.Info("manual sync triggered", "repo", repoName)
 			resetBackoff(repoName)
+			trigSettingsCtx, trigSettingsCancel := context.WithTimeout(ctx, 5*time.Second)
+			trigInfCfg := loadInfisicalFromDB(trigSettingsCtx, sqlDB, cryptoKey)
+			trigSettingsCancel()
 			for _, repo := range repos {
 				if repo.Name == repoName {
-					syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, syncInterval, store, dockerClient)
+					syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerClient, trigInfCfg)
 					break
 				}
 			}
