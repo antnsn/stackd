@@ -64,10 +64,10 @@ export function RepoCardsView({ repo, onSelectStack, isSyncing, onSync, syncStat
   return (
     <div class="repo-cards-view">
       <div class="repo-cards-topbar">
-        <span class="repo-cards-title">
+        <h2 class="repo-cards-title">
           <span class="repo-cards-title__label">Repos:</span>
           {repo.name}
-        </span>
+        </h2>
 
         <div class="repo-search">
           <span class="repo-search__icon" aria-hidden="true">⌕</span>
@@ -191,7 +191,7 @@ function ContainerRow({ container }) {
 
   return (
     <div class={`ctr-row ctr-row--${dotMod}`}>
-      <span class="ctr-row__dot" aria-hidden="true" />
+      <span class="ctr-row__dot" aria-label={dotMod} title={dotMod} />
       <span class="ctr-row__name" title={container.name}>{container.name}</span>
       <span class="ctr-row__image" title={container.image}>{image}</span>
       <span class="ctr-row__age">{age}</span>
