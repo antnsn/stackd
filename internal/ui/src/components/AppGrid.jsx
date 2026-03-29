@@ -187,7 +187,10 @@ function StackCard({ stack, isSelected, onSelect }) {
         )}
       </div>
       {stack.lastError && (
-        <div class="stack-error" title={stack.lastError}>{stack.lastError.split('\n')[0]}</div>
+        <div class="stack-error" title={stack.lastError}>
+          <span class="stack-error__icon" aria-hidden="true">⚠</span>
+          {stack.lastError.split('\n')[0]}
+        </div>
       )}
     </button>
   )

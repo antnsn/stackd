@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,6 +132,9 @@ func (s *Server) registerRoutes() {
 
 	// GET /api/logs/{container} — SSE stream of Docker logs
 	s.mux.HandleFunc("GET /api/logs/{container}", s.handleLogs)
+
+	// GET /api/stacks/{repo}/{stack}/compose — raw compose file content
+	s.mux.HandleFunc("GET /api/stacks/{repo}/{stack}/compose", s.handleComposeFile)
 
 	// POST /api/containers/{container}/start|stop|restart — lifecycle control
 	s.mux.HandleFunc("POST /api/containers/{container}/start", func(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +279,42 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]string{"status": "already_queued", "repo": repo})
 	}
+}
+
+// handleComposeFile returns the raw contents of the docker-compose.yml for a stack.
+func (s *Server) handleComposeFile(w http.ResponseWriter, r *http.Request) {
+	repoName := r.PathValue("repo")
+	stackName := r.PathValue("stack")
+
+	all := s.store.GetAll()
+	var stackDir string
+	for _, st := range all.Stacks {
+		if st.RepoName == repoName && st.Name == stackName {
+			stackDir = st.StackDir
+			break
+		}
+	}
+	if stackDir == "" {
+		http.Error(w, "stack not found", http.StatusNotFound)
+		return
+	}
+
+	// Try docker-compose.yml then docker-compose.yaml
+	var content []byte
+	var readErr error
+	for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
+		content, readErr = os.ReadFile(filepath.Join(stackDir, name))
+		if readErr == nil {
+			break
+		}
+	}
+	if readErr != nil {
+		http.Error(w, "compose file not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(content)
 }
 
 // handleLogs streams container logs as Server-Sent Events.

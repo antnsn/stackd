@@ -58,12 +58,6 @@ export function AppDetail({ stack, onClose, onRefresh }) {
             <span class="meta-value meta-value--mono">{stack.stackDir}</span>
           </div>
         )}
-        {stack.lastError && (
-          <div class="meta-item meta-item--error">
-            <span class="meta-label">Error</span>
-            <pre class="meta-value meta-value--error-detail">{stack.lastError}</pre>
-          </div>
-        )}
       </div>
 
       {containers.length > 0 ? (
@@ -81,8 +75,19 @@ export function AppDetail({ stack, onClose, onRefresh }) {
                 {c.name}
               </button>
             ))}
+            <button
+              role="tab"
+              aria-selected={selectedContainer === '__compose__'}
+              class={`container-tab container-tab--compose ${selectedContainer === '__compose__' ? 'container-tab--active' : ''}`}
+              onClick={() => setSelectedContainer('__compose__')}
+            >
+              compose.yml
+            </button>
           </div>
-          {container && <ContainerDetail container={container} onRefresh={onRefresh} />}
+          {selectedContainer === '__compose__'
+            ? <ComposeViewer repoName={stack.repoName} stackName={stack.name} />
+            : container && <ContainerDetail container={container} onRefresh={onRefresh} />
+          }
         </>
       ) : (
         <div class="empty-state-inline">
@@ -308,5 +313,28 @@ function ContainerInfo({ container }) {
         </div>
       )}
     </div>
+  )
+}
+
+// ── ComposeViewer ─────────────────────────────────────
+
+function ComposeViewer({ repoName, stackName }) {
+  const [content, setContent] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setContent(null)
+    setError(null)
+    fetch(`/api/stacks/${encodeURIComponent(repoName)}/${encodeURIComponent(stackName)}/compose`)
+      .then(r => r.ok ? r.text() : Promise.reject(r.statusText))
+      .then(setContent)
+      .catch(e => setError(String(e)))
+  }, [repoName, stackName])
+
+  if (error) return <div class="compose-error">Could not load compose file: {error}</div>
+  if (!content) return <div class="compose-loading">Loading…</div>
+
+  return (
+    <pre class="compose-viewer">{content}</pre>
   )
 }

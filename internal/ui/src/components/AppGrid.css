@@ -244,10 +244,25 @@
 }
 
 .stack-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   margin-top: 6px;
-  font-family: var(--font-ui);
+  padding: 5px 8px;
+  background: rgba(248, 81, 73, 0.08);
+  border-left: 2px solid var(--status-stopped);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--status-stopped);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.stack-error__icon {
+  flex-shrink: 0;
+  font-size: 10px;
+  margin-top: 1px;
 }
 
 /* ── Stack badges ────────────────────────────────── */
