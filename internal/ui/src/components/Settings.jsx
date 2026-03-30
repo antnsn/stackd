@@ -502,7 +502,7 @@ function GeneralTab() {
 // ---- Settings root -------------------------------------------------------
 
 export function Settings() {
-  const [tab, setTab] = useState('repos')
+  const [tab, setTab] = useState('general')
   const [sshKeys, setSSHKeys] = useState([])
 
   // Load SSH keys upfront so the repo modal has them regardless of active tab.
@@ -517,10 +517,10 @@ export function Settings() {
     <div class="settings-page">
       <nav class="settings-nav" aria-label="Settings sections">
         <button
-          class={`settings-nav__item ${tab === 'repos' ? 'active' : ''}`}
-          onClick={() => setTab('repos')}
+          class={`settings-nav__item ${tab === 'general' ? 'active' : ''}`}
+          onClick={() => setTab('general')}
         >
-          Repositories
+          General
         </button>
         <button
           class={`settings-nav__item ${tab === 'ssh' ? 'active' : ''}`}
@@ -529,16 +529,16 @@ export function Settings() {
           SSH Keys
         </button>
         <button
-          class={`settings-nav__item ${tab === 'general' ? 'active' : ''}`}
-          onClick={() => setTab('general')}
+          class={`settings-nav__item ${tab === 'repos' ? 'active' : ''}`}
+          onClick={() => setTab('repos')}
         >
-          General
+          Repositories
         </button>
       </nav>
       <div class="settings-content">
-        {tab === 'repos' && <ReposTab sshKeys={sshKeys} />}
-        {tab === 'ssh' && <SSHKeysTab onKeysChange={setSSHKeys} />}
         {tab === 'general' && <GeneralTab />}
+        {tab === 'ssh' && <SSHKeysTab onKeysChange={setSSHKeys} />}
+        {tab === 'repos' && <ReposTab sshKeys={sshKeys} />}
       </div>
     </div>
   )
