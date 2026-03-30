@@ -253,7 +253,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
 const LOG_LINE_H = 19
 
 // Simple spring integrator — returns a controller object
-function makeSpring(stiffness = 0.13, damping = 0.82) {
+function makeSpring(stiffness = 0.18, damping = 0.94) {
   let current = 0, target = 0, velocity = 0, raf = null, cb = null
 
   function step() {
