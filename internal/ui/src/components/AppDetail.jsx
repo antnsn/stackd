@@ -1,19 +1,12 @@
-import { useState, useEffect, useRef } from 'preact/hooks'
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
 import '@xterm/xterm/css/xterm.css'
 import './AppDetail.css'
 
-function classifyLog(text) {
-  const l = text.toLowerCase()
-  if (l.includes('error') || l.includes('fatal') || l.includes('panic') || l.includes('critical')) return 'log-error'
-  if (l.includes('warn')) return 'log-warn'
-  if (l.includes('debug') || l.includes('trace')) return 'log-debug'
-  return ''
-}
 
-// ── AppDetail ─────────────────────────────────────────
+
 
 export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack, isSyncing, isApplying }) {
   const containers = stack.containers || []
@@ -251,54 +244,245 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
   )
 }
 
-// ── LogStream ─────────────────────────────────────────
+// ── LogStream — OffscreenCanvas + Web Worker ──────────
+// Renders log lines on a canvas in a background worker thread.
+// Handles unlimited line volume at 60fps. Spring physics for
+// scroll-to-bottom; manual wheel scroll is always immediate.
+
+// LINE_H must match the constant in logWorker.js
+const LOG_LINE_H = 19
+
+// Simple spring integrator — returns a controller object
+function makeSpring(stiffness = 0.13, damping = 0.82) {
+  let current = 0, target = 0, velocity = 0, raf = null, cb = null
+
+  function step() {
+    const force = (target - current) * stiffness
+    velocity = velocity * damping + force
+    current += velocity
+    cb?.(current)
+    if (Math.abs(velocity) > 0.1 || Math.abs(target - current) > 0.5) {
+      raf = requestAnimationFrame(step)
+    } else {
+      current  = target
+      velocity = 0
+      cb?.(current)
+      raf = null
+    }
+  }
+
+  return {
+    springTo(t, onUpdate) {
+      target = t
+      cb     = onUpdate
+      if (!raf) raf = requestAnimationFrame(step)
+    },
+    jumpTo(v, onUpdate) {
+      cancelAnimationFrame(raf)
+      raf = null; current = v; target = v; velocity = 0
+      onUpdate?.(v)
+    },
+    get current() { return current },
+    set target(t) { target = t },
+    destroy()     { cancelAnimationFrame(raf) },
+  }
+}
 
 function LogStream({ containerName }) {
-  const [logs, setLogs] = useState([])
+  const canvasRef    = useRef(null)
+  const containerRef = useRef(null)
+  const workerRef    = useRef(null)
+  const springRef    = useRef(null)
+  const esRef        = useRef(null)
+  const bufferRef    = useRef([])
+  const flushTimer   = useRef(null)
+  const totalHRef    = useRef(0)       // kept in sync from worker metrics
+  const atBottomRef  = useRef(true)
+
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [visibleCount, setVisibleCount] = useState(0)
   const [streamEnded, setStreamEnded] = useState(false)
-  const [filterText, setFilterText] = useState('')
-  const esRef = useRef(null)
-  const endRef = useRef(null)
-  const mountedRef = useRef(false)
+  const [filterText,  setFilterText]  = useState('')
+  const [atBottom,    setAtBottom]    = useState(true)
+  const [copied,      setCopied]      = useState(false)
 
-  useEffect(() => { mountedRef.current = true }, [])
+  // Sync the ref whenever state changes (avoids stale closures in callbacks)
+  useEffect(() => { atBottomRef.current = atBottom }, [atBottom])
 
-  const startStream = () => {
-    if (esRef.current) esRef.current.close()
-    setLogs([])
+  // ── Worker + canvas init ──────────────────────────
+  useEffect(() => {
+    const canvas    = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    // Graceful degradation: fall back to DOM rendering if OffscreenCanvas unsupported
+    if (typeof OffscreenCanvas === 'undefined' || !canvas.transferControlToOffscreen) {
+      return // leave existing DOM fallback in place
+    }
+
+    const spring = makeSpring()
+    springRef.current = spring
+
+    const worker = new Worker(
+      new URL('../workers/logWorker.js', import.meta.url),
+      { type: 'module' }
+    )
+    workerRef.current = worker
+
+    const sendScroll = v => worker.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
+
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'metrics') {
+        totalHRef.current = data.totalHeight
+      }
+      if (data.type === 'count') {
+        setTotalCount(data.total)
+        setVisibleCount(data.visible)
+        // Maintain bottom-lock while streaming
+        if (atBottomRef.current) {
+          const h   = containerRef.current?.clientHeight ?? 0
+          const max = Math.max(0, data.visible * LOG_LINE_H - h)
+          spring.springTo(max, sendScroll)
+        }
+      }
+      if (data.type === 'allLines') {
+        navigator.clipboard.writeText(data.text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        }).catch(() => {})
+      }
+    }
+
+    const rect = container.getBoundingClientRect()
+    const dpr  = window.devicePixelRatio || 1
+    const offscreen = canvas.transferControlToOffscreen()
+    worker.postMessage(
+      { type: 'init', canvas: offscreen, width: rect.width, height: rect.height, dpr },
+      [offscreen]
+    )
+
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      worker.postMessage({ type: 'resize', width: Math.floor(width), height: Math.floor(height) })
+    })
+    ro.observe(container)
+
+    return () => {
+      worker.terminate()
+      workerRef.current = null
+      spring.destroy()
+      ro.disconnect()
+      cancelAnimationFrame(0) // no-op, spring.destroy handles its own raf
+    }
+  }, [])
+
+  // ── SSE stream ────────────────────────────────────
+  const startStream = useCallback(() => {
+    esRef.current?.close()
+    clearTimeout(flushTimer.current)
+    bufferRef.current = []
     setStreamEnded(false)
+    workerRef.current?.postMessage({ type: 'clear' })
+    springRef.current?.jumpTo(0, v => workerRef.current?.postMessage({ type: 'scroll', scrollTop: v }))
+    atBottomRef.current = true
+    setAtBottom(true)
+
     const es = new EventSource(`/api/logs/${containerName}`)
+
+    const flush = () => {
+      if (bufferRef.current.length > 0 && workerRef.current) {
+        workerRef.current.postMessage({ type: 'lines', lines: bufferRef.current.splice(0) })
+      }
+    }
+
     es.onmessage = e => {
-      setLogs(prev => [...prev, { id: Date.now() + Math.random(), text: e.data, time: new Date(), isNew: mountedRef.current }].slice(-200))
+      bufferRef.current.push({ text: e.data, timeStr: new Date().toLocaleTimeString() })
+      clearTimeout(flushTimer.current)
+      flushTimer.current = setTimeout(flush, 16)
     }
     es.onerror = () => {
       es.close()
+      flush()
       setStreamEnded(true)
     }
-    esRef.current = es
-  }
 
-  useEffect(() => {
-    startStream()
-    return () => esRef.current?.close()
+    esRef.current = es
   }, [containerName])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
+    startStream()
+    return () => {
+      esRef.current?.close()
+      clearTimeout(flushTimer.current)
+    }
+  }, [containerName])
 
-  const visibleLogs = filterText
-    ? logs.filter(e => e.text.toLowerCase().includes(filterText.toLowerCase()))
-    : logs
+  // ── Filter ────────────────────────────────────────
+  useEffect(() => {
+    workerRef.current?.postMessage({ type: 'filter', text: filterText })
+  }, [filterText])
+
+  // ── Scroll controls ───────────────────────────────
+  const scrollToBottom = useCallback(() => {
+    const h   = containerRef.current?.clientHeight ?? 0
+    const max = Math.max(0, totalHRef.current - h)
+    springRef.current?.springTo(max, v =>
+      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
+    )
+    atBottomRef.current = true
+    setAtBottom(true)
+  }, [])
+
+  const handleWheel = useCallback(e => {
+    e.preventDefault()
+    const h   = containerRef.current?.clientHeight ?? 0
+    const max = Math.max(0, totalHRef.current - h)
+    const next = Math.max(0, Math.min((springRef.current?.current ?? 0) + e.deltaY, max))
+    springRef.current?.jumpTo(next, v =>
+      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
+    )
+    const nowAtBottom = next >= max - 5
+    atBottomRef.current = nowAtBottom
+    setAtBottom(nowAtBottom)
+  }, [])
+
+  // Touch scroll
+  const touchStartY = useRef(0)
+  const handleTouchStart = useCallback(e => {
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+  const handleTouchMove = useCallback(e => {
+    e.preventDefault()
+    const dy = touchStartY.current - e.touches[0].clientY
+    touchStartY.current = e.touches[0].clientY
+    const h   = containerRef.current?.clientHeight ?? 0
+    const max = Math.max(0, totalHRef.current - h)
+    const next = Math.max(0, Math.min((springRef.current?.current ?? 0) + dy, max))
+    springRef.current?.jumpTo(next, v =>
+      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
+    )
+    const nowAtBottom = next >= max - 5
+    atBottomRef.current = nowAtBottom
+    setAtBottom(nowAtBottom)
+  }, [])
+
+  const copyAll = useCallback(() => {
+    workerRef.current?.postMessage({ type: 'getLines' })
+  }, [])
+
+  const showEmpty = totalCount === 0 && !streamEnded
 
   return (
     <div class="logs-wrapper">
       {streamEnded && (
         <div class="stream-banner" role="status" aria-live="assertive">
           <span>Stream ended</span>
-          <button class="stream-reconnect" onClick={startStream}><span aria-hidden="true">↻</span> Reconnect</button>
+          <button class="stream-reconnect" onClick={startStream}>
+            <span aria-hidden="true">↻</span> Reconnect
+          </button>
         </div>
       )}
+
       <div class="log-filter-bar">
         <input
           type="text"
@@ -309,25 +493,42 @@ function LogStream({ containerName }) {
           aria-label="Filter log lines"
         />
         {filterText && (
-          <button class="log-filter-clear" onClick={() => setFilterText('')} aria-label="Clear filter">
-            ✕
+          <button class="log-filter-clear" onClick={() => setFilterText('')} aria-label="Clear filter">✕</button>
+        )}
+        {filterText ? (
+          <span class="log-filter-count" aria-live="polite">{visibleCount}/{totalCount}</span>
+        ) : totalCount > 0 ? (
+          <span class="log-line-count">{totalCount.toLocaleString()} lines</span>
+        ) : null}
+        <button
+          class={`log-copy-btn${copied ? ' log-copy-btn--done' : ''}`}
+          onClick={copyAll}
+          disabled={totalCount === 0}
+          title="Copy all logs to clipboard"
+          aria-label="Copy all logs"
+        >
+          {copied ? '✓ Copied' : '⎘ Copy'}
+        </button>
+      </div>
+
+      <div
+        ref={containerRef}
+        class="logs-canvas-wrap"
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        aria-label={`Log output for ${containerName}`}
+        role="img"
+      >
+        <canvas ref={canvasRef} class="logs-canvas" />
+        {showEmpty && (
+          <div class="logs-canvas-empty" aria-live="polite">Waiting for logs…</div>
+        )}
+        {!atBottom && !showEmpty && (
+          <button class="logs-jump-btn" onClick={scrollToBottom} aria-label="Jump to latest logs">
+            ↓ Latest
           </button>
         )}
-        {filterText && (
-          <span class="log-filter-count" aria-live="polite">
-            {visibleLogs.length}/{logs.length}
-          </span>
-        )}
-      </div>
-      <div class="logs-content" role="log" aria-live="polite" aria-label={`Logs for ${containerName}`}>
-        {!logs.length && !streamEnded && <div class="logs-empty">Waiting for logs…</div>}
-        {visibleLogs.map((entry) => (
-          <div key={entry.id} class={`log-line ${classifyLog(entry.text)} ${entry.isNew ? 'log-line--new' : ''}`}>
-            <span class="log-time" aria-hidden="true">{entry.time.toLocaleTimeString()}</span>
-            <span class="log-text">{entry.text}</span>
-          </div>
-        ))}
-        <div ref={endRef} aria-hidden="true" />
       </div>
     </div>
   )
