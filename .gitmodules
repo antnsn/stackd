@@ -1,0 +1,3 @@
+[submodule ".github/agents"]
+	path = .github/agents
+	url = git@github.com:antnsn/stackd-internal.git
