@@ -350,23 +350,12 @@ function SSHKeysTab({ onKeysChange }) {
 
 // ---- General Settings tab ------------------------------------------------
 
-function GeneralTab() {
+function InfisicalTab() {
   const [meta, setMeta] = useState(null)
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
-  const [showPulls, setShowPulls] = useState(
-    () => localStorage.getItem('activity-show-pulls') === 'true'
-  )
-
-  const togglePulls = () => {
-    setShowPulls(v => {
-      const next = !v
-      localStorage.setItem('activity-show-pulls', String(next))
-      return next
-    })
-  }
 
   const load = () =>
     fetch('/api/settings/general')
@@ -378,8 +367,6 @@ function GeneralTab() {
           infisicalProjectId: data.infisicalProjectId || '',
           infisicalEnv: data.infisicalEnv || 'prod',
           infisicalUrl: data.infisicalUrl || '',
-          gitUserName: data.gitUserName || '',
-          gitUserEmail: data.gitUserEmail || '',
         })
       })
       .catch(e => setError(e.message))
@@ -394,8 +381,6 @@ function GeneralTab() {
       infisicalProjectId: form.infisicalProjectId,
       infisicalEnv: form.infisicalEnv,
       infisicalUrl: form.infisicalUrl,
-      gitUserName: form.gitUserName,
-      gitUserEmail: form.gitUserEmail,
     }
     if (form.infisicalToken) body.infisicalToken = form.infisicalToken
     try {
@@ -416,12 +401,11 @@ function GeneralTab() {
 
   return (
     <div class="settings-tab">
-      <div class="settings-tab__header"><h2>General</h2></div>
+      <div class="settings-tab__header"><h2>Infisical</h2></div>
       {error && <p class="settings-error">{error}</p>}
       {success && <p class="settings-success">{success}</p>}
 
       <div class="settings-section">
-        <h3>Infisical</h3>
         <div class="form-grid">
           <label class="form-label">
             Machine token
@@ -458,22 +442,122 @@ function GeneralTab() {
         </div>
       </div>
 
+      <div class="form-actions">
+        <button class="btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function GeneralTab() {
+  const [showPulls, setShowPulls] = useState(
+    () => localStorage.getItem('activity-show-pulls') === 'true'
+  )
+  const [dismissDelay, setDismissDelay] = useState(
+    () => localStorage.getItem('activity-dismiss-delay') || '4000'
+  )
+  const [meta, setMeta] = useState(null)
+  const [form, setForm] = useState({ dashboardToken: '', defaultSyncInterval: 60 })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+  const [sysInfo, setSysInfo] = useState(null)
+
+  const load = () =>
+    fetch('/api/settings/general')
+      .then(r => r.json())
+      .then(data => {
+        setMeta(data)
+        setForm(f => ({ ...f, defaultSyncInterval: data.defaultSyncInterval || 60 }))
+      })
+      .catch(() => {})
+
+  useEffect(() => {
+    load()
+    fetch('/api/settings/system')
+      .then(r => r.json())
+      .then(setSysInfo)
+      .catch(() => {})
+  }, [])
+
+  const togglePulls = () => {
+    setShowPulls(v => {
+      const next = !v
+      localStorage.setItem('activity-show-pulls', String(next))
+      return next
+    })
+  }
+
+  const setDelayValue = val => {
+    setDismissDelay(val)
+    localStorage.setItem('activity-dismiss-delay', val)
+  }
+
+  const save = async () => {
+    setSaving(true); setError(null); setSuccess(null)
+    const body = { defaultSyncInterval: Number(form.defaultSyncInterval) }
+    if (form.dashboardToken) body.dashboardToken = form.dashboardToken
+    try {
+      const res = await fetch('/api/settings/general', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Save failed'); setSaving(false); return }
+      setSuccess('Settings saved')
+      setForm(f => ({ ...f, dashboardToken: '' }))
+      setSaving(false)
+      load()
+    } catch (e) { setError(e.message); setSaving(false) }
+  }
+
+  return (
+    <div class="settings-tab">
+      <div class="settings-tab__header"><h2>General</h2></div>
+
       <div class="settings-section">
-        <h3>Git</h3>
+        <h3>Dashboard</h3>
+        {error && <p class="settings-error">{error}</p>}
+        {success && <p class="settings-success">{success}</p>}
         <div class="form-grid">
           <label class="form-label">
-            Commit author name
-            <input class="form-input" value={form.gitUserName} onInput={e => set('gitUserName', e.target.value)} />
+            Dashboard token
+            {meta?.dashboardTokenSet && (
+              <span class="field-hint">
+                <span class="dot dot--green" aria-hidden="true"></span> token set
+              </span>
+            )}
+            <input
+              class="form-input"
+              type="password"
+              value={form.dashboardToken}
+              onInput={e => setForm(f => ({ ...f, dashboardToken: e.target.value }))}
+              placeholder={meta?.dashboardTokenSet ? '(leave blank to keep current)' : 'set a token to require auth…'}
+            />
           </label>
           <label class="form-label">
-            Commit author email
-            <input class="form-input" value={form.gitUserEmail} onInput={e => set('gitUserEmail', e.target.value)} />
+            Default sync interval (seconds)
+            <input
+              class="form-input"
+              type="number"
+              value={form.defaultSyncInterval}
+              onInput={e => setForm(f => ({ ...f, defaultSyncInterval: e.target.value }))}
+              min="10"
+            />
           </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save settings'}
+          </button>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Dashboard</h3>
+        <h3>Activity feed</h3>
         <label class="toggle-row">
           <span class="toggle-row__label">
             Show repo pulls in activity feed
@@ -488,13 +572,38 @@ function GeneralTab() {
             <span class="toggle-btn__knob" />
           </button>
         </label>
+        <label class="form-label" style={{ marginTop: '1rem' }}>
+          Auto-dismiss delay
+          <select
+            class="form-select"
+            value={dismissDelay}
+            onChange={e => setDelayValue(e.target.value)}
+          >
+            <option value="2000">2 seconds</option>
+            <option value="4000">4 seconds</option>
+            <option value="8000">8 seconds</option>
+            <option value="never">Never</option>
+          </select>
+        </label>
       </div>
 
-      <div class="form-actions">
-        <button class="btn-primary" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
-      </div>
+      {sysInfo && (
+        <div class="settings-section">
+          <h3>About</h3>
+          <div class="sys-info-grid">
+            <span class="sys-info-grid__label">Version</span>
+            <span class="sys-info-grid__value mono">{sysInfo.version}</span>
+            <span class="sys-info-grid__label">Uptime</span>
+            <span class="sys-info-grid__value mono">{sysInfo.uptime}</span>
+            <span class="sys-info-grid__label">Clone dir</span>
+            <span class="sys-info-grid__value mono">{sysInfo.cloneDir}</span>
+            <span class="sys-info-grid__label">DB path</span>
+            <span class="sys-info-grid__value mono">{sysInfo.dbPath}</span>
+            <span class="sys-info-grid__label">Go version</span>
+            <span class="sys-info-grid__value mono">{sysInfo.goVersion}</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

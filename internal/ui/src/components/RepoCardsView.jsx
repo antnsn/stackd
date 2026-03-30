@@ -308,11 +308,14 @@ export function ActivityFeed() {
         })
         setVisible(true)
 
-        // Auto-remove resolved events after 4s
+        // Auto-remove resolved events after configurable delay
         if (isResolution) {
-          setTimeout(() => {
-            setEvents(prev => prev.filter(p => p.id !== id))
-          }, 4000)
+          const delay = localStorage.getItem('activity-dismiss-delay') || '4000'
+          if (delay !== 'never') {
+            setTimeout(() => {
+              setEvents(prev => prev.filter(p => p.id !== id))
+            }, parseInt(delay, 10))
+          }
         }
       } catch {}
     }

@@ -6,6 +6,7 @@ import (
 "errors"
 "log/slog"
 "net/http"
+"strconv"
 "time"
 
 gossh "golang.org/x/crypto/ssh"
@@ -303,6 +304,8 @@ InfisicalEnv        string `json:"infisicalEnv"`
 InfisicalURL        string `json:"infisicalUrl"`
 GitUserName         string `json:"gitUserName"`
 GitUserEmail        string `json:"gitUserEmail"`
+DashboardTokenSet   bool   `json:"dashboardTokenSet"`
+DefaultSyncInterval int    `json:"defaultSyncInterval"`
 }
 
 type generalSettingsRequest struct {
@@ -312,6 +315,8 @@ InfisicalEnv        *string `json:"infisicalEnv"`
 InfisicalURL        *string `json:"infisicalUrl"`
 GitUserName         *string `json:"gitUserName"`
 GitUserEmail        *string `json:"gitUserEmail"`
+DashboardToken      *string `json:"dashboardToken"`
+DefaultSyncInterval *int    `json:"defaultSyncInterval"`
 }
 
 func (s *Server) handleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
@@ -321,13 +326,24 @@ jsonError(w, "failed to get settings", http.StatusInternalServerError)
 return
 }
 tokenRaw, _, _ := db.GetSetting(r.Context(), s.db, "infisical_token")
+dbDashToken, _, _ := db.GetSetting(r.Context(), s.db, "dashboard_token")
+
+defaultSyncInterval := 60
+if val := settings["default_sync_interval"]; val != "" {
+if n, err := strconv.Atoi(val); err == nil && n > 0 {
+defaultSyncInterval = n
+}
+}
+
 jsonOK(w, generalSettingsResponse{
-InfisicalTokenSet:  tokenRaw != "",
-InfisicalProjectID: settings["infisical_project_id"],
-InfisicalEnv:       settings["infisical_env"],
-InfisicalURL:       settings["infisical_url"],
-GitUserName:        settings["git_user_name"],
-GitUserEmail:       settings["git_user_email"],
+InfisicalTokenSet:   tokenRaw != "",
+InfisicalProjectID:  settings["infisical_project_id"],
+InfisicalEnv:        settings["infisical_env"],
+InfisicalURL:        settings["infisical_url"],
+GitUserName:         settings["git_user_name"],
+GitUserEmail:        settings["git_user_email"],
+DashboardTokenSet:   dbDashToken != "",
+DefaultSyncInterval: defaultSyncInterval,
 })
 }
 
@@ -361,6 +377,13 @@ updates = append(updates, kv{"git_user_name", *req.GitUserName})
 }
 if req.GitUserEmail != nil {
 updates = append(updates, kv{"git_user_email", *req.GitUserEmail})
+}
+if req.DashboardToken != nil && *req.DashboardToken != "" {
+s.SetToken(*req.DashboardToken)
+updates = append(updates, kv{"dashboard_token", *req.DashboardToken})
+}
+if req.DefaultSyncInterval != nil && *req.DefaultSyncInterval > 0 {
+updates = append(updates, kv{"default_sync_interval", strconv.Itoa(*req.DefaultSyncInterval)})
 }
 for _, u := range updates {
 if err := db.SetSetting(r.Context(), s.db, u.key, u.value); err != nil {

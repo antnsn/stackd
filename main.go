@@ -35,6 +35,9 @@ suspended   bool // true after maxFailures consecutive failures
 
 const maxSyncFailures = 10
 
+// Version is set at build time via -ldflags "-X main.Version=x.y.z".
+var Version = "dev"
+
 var repoBackoffs sync.Map // key: repo name (string), value: *syncBackoff
 var repoLocks sync.Map   // key: repo name (string), value: *sync.Mutex
 
@@ -424,7 +427,14 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 
 	syncInterval := time.Duration(repo.SyncInterval) * time.Second
 	if syncInterval <= 0 {
-		syncInterval = 60 * time.Second
+		if val, _, err := db.GetSetting(ctx, sqlDB, "default_sync_interval"); err == nil && val != "" {
+			if n, parseErr := strconv.Atoi(val); parseErr == nil && n > 0 {
+				syncInterval = time.Duration(n) * time.Second
+			}
+		}
+		if syncInterval <= 0 {
+			syncInterval = 60 * time.Second
+		}
 	}
 
 	if store != nil {
@@ -675,6 +685,23 @@ func main() {
 	// --- Dashboard server (always enabled) ---
 	syncTrigger := make(chan string, 16)
 	srv := server.New(store, dockerClient, syncTrigger, port, sqlDB, cryptoKey, activityBus)
+
+	// Set initial dashboard token: env var takes precedence, DB as fallback.
+	{
+		envToken := os.Getenv("DASHBOARD_TOKEN")
+		if envToken != "" {
+			srv.SetToken(envToken)
+		} else {
+			tokenCtx, tokenCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if dbToken, _, err := db.GetSetting(tokenCtx, sqlDB, "dashboard_token"); err == nil && dbToken != "" {
+				srv.SetToken(dbToken)
+			}
+			tokenCancel()
+		}
+	}
+	// Pass system info to server.
+	dbPath := strings.TrimPrefix(dbURL, "sqlite://")
+	srv.SetSystemInfo(Version, cloneDir, dbPath)
 
 	// Wire per-stack apply: git pull the repo, then apply only the target stack.
 	srv.SetApplyStack(func(repoName, stackName string) {

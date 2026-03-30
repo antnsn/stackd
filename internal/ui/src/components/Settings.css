@@ -673,3 +673,18 @@
   transition: transform 0.2s;
 }
 .toggle-btn--on .toggle-btn__knob { transform: translateX(16px); }
+
+.sys-info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1.5rem;
+  font-size: 0.85rem;
+}
+.sys-info-grid__label {
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+.sys-info-grid__value {
+  color: var(--text-secondary, #ccc);
+  word-break: break-all;
+}

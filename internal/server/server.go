@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +39,12 @@ type Server struct {
 	cryptoKey    []byte
 	activity     *state.ActivityBus
 	applyStack   func(repo, stack string) // called by per-stack apply endpoint
+	tokenMu      sync.RWMutex
+	tokenVal     string
+	startTime    time.Time
+	version      string
+	cloneDir     string
+	dbPath       string
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
@@ -61,8 +68,8 @@ func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- str
 	}
 	s.syncLimiter = newRateLimiter(window)
 
-	token := os.Getenv("DASHBOARD_TOKEN")
-	s.handler = securityHeaders(authMiddleware(token, s.mux))
+	s.startTime = time.Now()
+	s.handler = securityHeaders(authMiddleware(s.getToken, s.mux))
 	return s
 }
 
@@ -207,6 +214,7 @@ func (s *Server) registerRoutes() {
 	// General settings
 	s.mux.HandleFunc("GET /api/settings/general", s.handleGetGeneralSettings)
 	s.mux.HandleFunc("PUT /api/settings/general", s.handleUpdateGeneralSettings)
+	s.mux.HandleFunc("GET /api/settings/system", s.handleSystemInfo)
 }
 
 // repoView is the per-repo shape returned by /api/status.
@@ -438,12 +446,15 @@ func (s *Server) refreshContainerState(containerName string) {
 }
 
 // authMiddleware protects API endpoints with bearer token authentication.
-// If DASHBOARD_TOKEN is empty, all requests pass through (auth disabled).
-func authMiddleware(token string, next http.Handler) http.Handler {
-	if token == "" {
-		return next
-	}
+// getToken is called on each request so token changes take effect immediately.
+// If getToken returns "", all requests pass through (auth disabled).
+func authMiddleware(getToken func() string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := getToken()
+		if token == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		// Always allow: health probes, metrics, static assets, dashboard HTML
 		path := r.URL.Path
 		if path == "/healthz" || path == "/readyz" || path == "/metrics" ||
@@ -522,6 +533,37 @@ func (s *sseWriter) Write(p []byte) (int, error) {
 }
 
 // ── Activity SSE ──────────────────────────────────────────────────────────────
+
+func (s *Server) getToken() string {
+	s.tokenMu.RLock()
+	defer s.tokenMu.RUnlock()
+	return s.tokenVal
+}
+
+// SetToken updates the dashboard bearer token without restarting the server.
+func (s *Server) SetToken(token string) {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	s.tokenVal = token
+}
+
+// SetSystemInfo stores version and path info for the system info endpoint.
+func (s *Server) SetSystemInfo(version, cloneDir, dbPath string) {
+	s.version = version
+	s.cloneDir = cloneDir
+	s.dbPath = dbPath
+}
+
+func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	uptime := time.Since(s.startTime).Round(time.Second)
+	jsonOK(w, map[string]string{
+		"version":   s.version,
+		"uptime":    uptime.String(),
+		"cloneDir":  s.cloneDir,
+		"dbPath":    s.dbPath,
+		"goVersion": runtime.Version(),
+	})
+}
 
 // SetApplyStack wires the per-stack apply callback (called in a goroutine by handleApplyStack).
 func (s *Server) SetApplyStack(fn func(repo, stack string)) {
