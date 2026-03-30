@@ -220,6 +220,7 @@ function ReposTab({ sshKeys }) {
 
 function SSHKeysTab({ onKeysChange }) {
   const [keys, setKeys] = useState([])
+  const [repos, setRepos] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ name: '', privateKey: '' })
   const [saving, setSaving] = useState(false)
@@ -229,9 +230,16 @@ function SSHKeysTab({ onKeysChange }) {
 
   const loadKeys = () => {
     setLoading(true)
-    fetch('/api/settings/ssh-keys')
-      .then(r => r.json())
-      .then(data => { setKeys(data); setLoading(false); onKeysChange?.(data) })
+    Promise.all([
+      fetch('/api/settings/ssh-keys').then(r => r.json()),
+      fetch('/api/settings/repos').then(r => r.json()),
+    ])
+      .then(([keyData, repoData]) => {
+        setKeys(keyData || [])
+        setRepos(repoData || [])
+        setLoading(false)
+        onKeysChange?.(keyData || [])
+      })
       .catch(e => { setError(e.message); setLoading(false) })
   }
 
@@ -261,6 +269,12 @@ function SSHKeysTab({ onKeysChange }) {
     setDeleteConfirm(null)
     loadKeys()
   }
+
+  // Map key id → repo names that use it
+  const keyUsage = keys.reduce((acc, k) => {
+    acc[k.id] = repos.filter(r => r.sshKeyId === k.id).map(r => r.name)
+    return acc
+  }, {})
 
   return (
     <div class="settings-tab">
@@ -306,6 +320,13 @@ function SSHKeysTab({ onKeysChange }) {
                 <div class="key-item__body">
                   <span class="key-item__name">{k.name}</span>
                   <span class="key-item__pub mono">{k.publicKey}</span>
+                  {keyUsage[k.id]?.length > 0 ? (
+                    <span class="key-item__usage">
+                      Used by: {keyUsage[k.id].map(n => <span class="key-item__repo-tag" key={n}>{n}</span>)}
+                    </span>
+                  ) : (
+                    <span class="key-item__usage key-item__usage--unused">Not used by any repo</span>
+                  )}
                 </div>
                 {deleteConfirm === k.id ? (
                   <span class="confirm-row">
