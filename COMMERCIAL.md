@@ -2,7 +2,7 @@
 
 stackd is open-source software licensed under [AGPL-3.0](LICENSE).
 
-> **The Community edition is free forever.** The open-source version of stackd will always be available under AGPL-3.0 at no cost. We will never remove or lock features from the Community edition.
+> **The Community edition is free forever.** The open-source version of stackd will always be available under AGPL-3.0 at no cost. Core GitOps functionality will never be moved behind a paywall.
 
 ## When Do You Need a Commercial License?
 
