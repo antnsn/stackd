@@ -23,12 +23,13 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
       <div class="detail-header">
         <div class="detail-header__title">
           <span class="detail-repo">{stack.repoName}</span>
-          <span class="detail-sep" aria-hidden="true">›</span>
+          <span class="detail-sep" aria-hidden="true">/</span>
           <h2 class="detail-stack-name">{stack.name}</h2>
           {stack.status && (
-            <span class={`stack-badge stack-badge--${stack.status}`} aria-hidden="true">
-              {stack.status}
-            </span>
+            <span
+              class={`status-pip status-pip--${stack.status}`}
+              aria-label={`Status: ${stack.status}`}
+            />
           )}
         </div>
         <div class="detail-header__actions">

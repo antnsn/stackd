@@ -34,8 +34,8 @@
 /* Breadcrumb: separator */
 .detail-sep {
   color: var(--text-muted);
-  font-size: var(--text-lg);
-  margin: 0 2px;
+  font-size: var(--text-sm);
+  margin: 0 1px;
   user-select: none;
 }
 
@@ -43,11 +43,29 @@
 .detail-stack-name {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: var(--text-2xl);
-  font-weight: var(--font-bold);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
   text-wrap: balance;
 }
+
+/* Status pip — replaces text badge in panel header */
+.status-pip {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.status-pip--running,
+.status-pip--ok      { background: var(--status-ok); }
+.status-pip--stopped,
+.status-pip--error   { background: var(--status-stopped); }
+.status-pip--degraded { background: var(--status-degraded); }
+.status-pip--applying,
+.status-pip--syncing  { background: var(--status-applying); }
+.status-pip--unknown  { background: var(--status-unknown); }
 
 /* P0-3 fix: aria-label="Close" added in JSX         */
 /* P1-1 fix: transition: all → specific properties   */
