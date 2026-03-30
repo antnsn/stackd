@@ -54,8 +54,6 @@
 
 /* ── Tab ───────────────────────────────────────────────── */
 .settings-tab {
-  max-width: 820px;
-  margin: 0 auto;
   padding: var(--space-6) var(--space-8);
 }
 
@@ -408,7 +406,7 @@
 }
 
 .td-url {
-  max-width: 200px;
+  max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
