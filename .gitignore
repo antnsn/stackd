@@ -1,3 +1,5 @@
 # Ignore build artifacts and dev metadata
 .vite/
 /issues
+.DS_Store
+**/.DS_Store
