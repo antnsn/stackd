@@ -253,62 +253,31 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
 // LINE_H must match the constant in logWorker.js
 const LOG_LINE_H = 19
 
-// Simple spring integrator — returns a controller object
-function makeSpring(stiffness = 0.18, damping = 0.94) {
-  let current = 0, target = 0, velocity = 0, raf = null, cb = null
-
-  function step() {
-    const force = (target - current) * stiffness
-    velocity = velocity * damping + force
-    current += velocity
-    cb?.(current)
-    if (Math.abs(velocity) > 0.1 || Math.abs(target - current) > 0.5) {
-      raf = requestAnimationFrame(step)
-    } else {
-      current  = target
-      velocity = 0
-      cb?.(current)
-      raf = null
-    }
-  }
-
-  return {
-    springTo(t, onUpdate) {
-      target = t
-      cb     = onUpdate
-      if (!raf) raf = requestAnimationFrame(step)
-    },
-    jumpTo(v, onUpdate) {
-      cancelAnimationFrame(raf)
-      raf = null; current = v; target = v; velocity = 0
-      onUpdate?.(v)
-    },
-    get current() { return current },
-    set target(t) { target = t },
-    destroy()     { cancelAnimationFrame(raf) },
-  }
-}
-
 function LogStream({ containerName }) {
   const canvasRef    = useRef(null)
   const containerRef = useRef(null)
   const workerRef    = useRef(null)
-  const springRef    = useRef(null)
+  const scrollRef    = useRef(0)        // current scroll position
   const esRef        = useRef(null)
   const bufferRef    = useRef([])
   const flushTimer   = useRef(null)
-  const totalHRef    = useRef(0)       // kept in sync from worker metrics
+  const totalHRef    = useRef(0)
   const atBottomRef  = useRef(true)
 
-  const [totalCount,  setTotalCount]  = useState(0)
+  const [totalCount,   setTotalCount]   = useState(0)
   const [visibleCount, setVisibleCount] = useState(0)
-  const [streamEnded, setStreamEnded] = useState(false)
-  const [filterText,  setFilterText]  = useState('')
-  const [atBottom,    setAtBottom]    = useState(true)
-  const [copied,      setCopied]      = useState(false)
+  const [streamEnded,  setStreamEnded]  = useState(false)
+  const [filterText,   setFilterText]   = useState('')
+  const [atBottom,     setAtBottom]     = useState(true)
+  const [copied,       setCopied]       = useState(false)
 
-  // Sync the ref whenever state changes (avoids stale closures in callbacks)
   useEffect(() => { atBottomRef.current = atBottom }, [atBottom])
+
+  const sendScroll = useCallback(v => {
+    const clamped = Math.max(0, v)
+    scrollRef.current = clamped
+    workerRef.current?.postMessage({ type: 'scroll', scrollTop: clamped })
+  }, [])
 
   // ── Worker + canvas init ──────────────────────────
   useEffect(() => {
@@ -316,21 +285,15 @@ function LogStream({ containerName }) {
     const container = containerRef.current
     if (!canvas || !container) return
 
-    // Graceful degradation: fall back to DOM rendering if OffscreenCanvas unsupported
     if (typeof OffscreenCanvas === 'undefined' || !canvas.transferControlToOffscreen) {
-      return // leave existing DOM fallback in place
+      return
     }
-
-    const spring = makeSpring()
-    springRef.current = spring
 
     const worker = new Worker(
       new URL('../workers/logWorker.js', import.meta.url),
       { type: 'module' }
     )
     workerRef.current = worker
-
-    const sendScroll = v => worker.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
 
     worker.onmessage = ({ data }) => {
       if (data.type === 'metrics') {
@@ -339,11 +302,10 @@ function LogStream({ containerName }) {
       if (data.type === 'count') {
         setTotalCount(data.total)
         setVisibleCount(data.visible)
-        // Maintain bottom-lock while streaming
         if (atBottomRef.current) {
           const h   = containerRef.current?.clientHeight ?? 0
           const max = Math.max(0, data.visible * LOG_LINE_H - h)
-          spring.springTo(max, sendScroll)
+          sendScroll(max)
         }
       }
       if (data.type === 'allLines') {
@@ -371,11 +333,9 @@ function LogStream({ containerName }) {
     return () => {
       worker.terminate()
       workerRef.current = null
-      spring.destroy()
       ro.disconnect()
-      cancelAnimationFrame(0) // no-op, spring.destroy handles its own raf
     }
-  }, [])
+  }, [sendScroll])
 
   // ── SSE stream ────────────────────────────────────
   const startStream = useCallback(() => {
@@ -384,7 +344,7 @@ function LogStream({ containerName }) {
     bufferRef.current = []
     setStreamEnded(false)
     workerRef.current?.postMessage({ type: 'clear' })
-    springRef.current?.jumpTo(0, v => workerRef.current?.postMessage({ type: 'scroll', scrollTop: v }))
+    sendScroll(0)
     atBottomRef.current = true
     setAtBottom(true)
 
@@ -408,7 +368,7 @@ function LogStream({ containerName }) {
     }
 
     esRef.current = es
-  }, [containerName])
+  }, [containerName, sendScroll])
 
   useEffect(() => {
     startStream()
@@ -427,25 +387,21 @@ function LogStream({ containerName }) {
   const scrollToBottom = useCallback(() => {
     const h   = containerRef.current?.clientHeight ?? 0
     const max = Math.max(0, totalHRef.current - h)
-    springRef.current?.springTo(max, v =>
-      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
-    )
+    sendScroll(max)
     atBottomRef.current = true
     setAtBottom(true)
-  }, [])
+  }, [sendScroll])
 
   const handleWheel = useCallback(e => {
     e.preventDefault()
     const h   = containerRef.current?.clientHeight ?? 0
     const max = Math.max(0, totalHRef.current - h)
-    const next = Math.max(0, Math.min((springRef.current?.current ?? 0) + e.deltaY, max))
-    springRef.current?.jumpTo(next, v =>
-      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
-    )
+    const next = Math.max(0, Math.min(scrollRef.current + e.deltaY, max))
+    sendScroll(next)
     const nowAtBottom = next >= max - 5
     atBottomRef.current = nowAtBottom
     setAtBottom(nowAtBottom)
-  }, [])
+  }, [sendScroll])
 
   // Touch scroll
   const touchStartY = useRef(0)
@@ -458,14 +414,12 @@ function LogStream({ containerName }) {
     touchStartY.current = e.touches[0].clientY
     const h   = containerRef.current?.clientHeight ?? 0
     const max = Math.max(0, totalHRef.current - h)
-    const next = Math.max(0, Math.min((springRef.current?.current ?? 0) + dy, max))
-    springRef.current?.jumpTo(next, v =>
-      workerRef.current?.postMessage({ type: 'scroll', scrollTop: Math.max(0, v) })
-    )
+    const next = Math.max(0, Math.min(scrollRef.current + dy, max))
+    sendScroll(next)
     const nowAtBottom = next >= max - 5
     atBottomRef.current = nowAtBottom
     setAtBottom(nowAtBottom)
-  }, [])
+  }, [sendScroll])
 
   const copyAll = useCallback(() => {
     workerRef.current?.postMessage({ type: 'getLines' })
