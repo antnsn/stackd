@@ -125,14 +125,16 @@ wrong or to confirm everything is running. Technical, busy, impatient. Primary j
 "Is everything up? What broke? Fix it now."
 
 ### Brand Personality
-**Sharp. Straight to the point. No BS.**
+**Sharp. Technical. Precise.**
 Emotional goal: **Power** — the user should feel *in command* of their infrastructure.
+Anti-references: crowded, bloated interfaces. Consumer apps, pastel dashboards, "friendly" SaaS UIs.
+References: **GitHub** (discipline, dark palette, typographic precision) and **Grafana** (structured data, status clarity).
 
 ### Aesthetic Direction
 - Dark only. Base `#0d1117`. No light mode.
 - Accent: electric indigo `#6c63ff` — reserved for actions/brand, never health states.
-- Typography: `DM Sans` or `Geist` for labels; `JetBrains Mono` / `IBM Plex Mono` for data.
-- Zero decoration — no gradients on chrome, no shadows on cards, 1px solid borders only.
+- Typography: `DM Sans` for labels; `JetBrains Mono` for data, logs, SHAs. `Inter` is banned.
+- Zero decoration — no gradients on chrome, no shadows on cards, 1px solid borders only, max 6px radius.
 - Status colours (`#3fb950` / `#f85149` / `#d29922` / `#58a6ff`) are sacred — never reuse.
 - Motion: sync spin + detail fade-in only. Always respect `prefers-reduced-motion`.
 
@@ -142,3 +144,4 @@ Emotional goal: **Power** — the user should feel *in command* of their infrast
 3. **Hierarchy is the UX** — Repo → Stack → Container must be obvious at every level.
 4. **Actions are explicit** — no hover-only affordances; force sync always one click away.
 5. **Fail loudly, recover gracefully** — errors shown immediately with a clear next action.
+6. **Silent by default** — no gratuitous animation, labelling, or alerting.
