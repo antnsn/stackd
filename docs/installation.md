@@ -3,14 +3,14 @@
 ## Prerequisites
 
 - **Docker ≥ 20.10** with the **Docker Compose plugin** (`docker compose`, not `docker-compose`)
-- **SSH key** — required for cloning private repositories over SSH (Ed25519 recommended)
 - **Docker socket** access — stackd calls the Docker daemon to manage stacks
+- A strong random value for `SECRET_KEY` — generate one with `openssl rand -hex 32`
 
 ---
 
-## Minimal Single-Repo Setup
+## Minimal Setup
 
-The quickest way to get started is with a single repository. Create a `docker-compose.yml` on your host:
+Create a `docker-compose.yml` on your host:
 
 ```yaml
 services:
@@ -18,29 +18,47 @@ services:
     container_name: stackd
     image: ghcr.io/antnsn/stackd:latest
     environment:
-      - TZ=Europe/Oslo
-      - PULL_ONLY=true
-      - SSH_KEY_PATH=/root/.ssh/id_ed25519
-      - SYNC_INTERVAL_SECONDS=60
-      - STACKS_DIR_DOCKERS=/repos/dockers/linuxServer/stacks
-      - DASHBOARD_ENABLED=true
-      - DASHBOARD_PORT=8080
+      - SECRET_KEY=change-me-use-openssl-rand-hex-32
+      - DB_URL=sqlite:///data/stackd.db
+      - PORT=8080
     volumes:
-      - /home/user/.ssh:/root/.ssh:ro
-      - /path/to/repo/dockers:/repos/dockers
+      - /path/to/stackd-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 ```
 
-Then run:
+Start stackd:
 
 ```sh
 docker compose up -d
 ```
 
-Open `http://localhost:8080` to see the dashboard.
+Open `http://localhost:8080` and use the **Settings → Repositories** page to add your first repository.
+
+---
+
+## Adding Your First Repository
+
+Repositories are configured through the Settings UI — not environment variables.
+
+1. Open the dashboard → **Settings → Repositories → Add Repository**
+2. Enter the repository URL:
+   - SSH (private repos): `git@github.com:org/repo.git`
+   - HTTPS (public repos): `https://github.com/org/repo.git`
+3. Set the **branch** (default: `main`), **stacks directory** (path within the repo to the folder containing stack subdirectories), and **sync interval**
+4. Choose an **auth method**:
+   - **SSH key** — select a key you've added under Settings → SSH Keys
+   - **Personal Access Token (PAT)** — enter a token (stored encrypted)
+   - **None** — for public repositories
+5. **Save** — stackd will immediately attempt a sync
 
 ---
 
@@ -48,22 +66,26 @@ Open `http://localhost:8080` to see the dashboard.
 
 | Host Path | Container Path | Why |
 |---|---|---|
-| `/home/user/.ssh` | `/root/.ssh` | SSH key for cloning private git repositories |
-| `/path/to/repo/myrepo` | `/repos/myrepo` | The git repository stackd will manage |
+| `/path/to/stackd-data` | `/data` | Persists `stackd.db` — contains all repos, SSH keys, and settings |
 | `/var/run/docker.sock` | `/var/run/docker.sock` | Docker socket so stackd can run `docker compose` |
-| _(optional)_ `/path/to/stackd.yaml` | `/repos/stackd.yaml` | Optional config file (or set `STACKD_CONFIG`) |
 
-> **Tip:** Mount the SSH directory read-only (`:ro`) — stackd only reads the key, never writes to it.
+> **Tip:** The database volume is the only required persistent mount. stackd clones repositories internally into `CLONE_DIR` (default: `/var/lib/stackd/repos`) — you do not need to pre-clone or mount repo directories.
 
 ---
 
 ## First-Run Checklist
 
-1. **SSH key exists and is readable** — verify with `ls -la /home/user/.ssh/id_ed25519`
-2. **Repository is accessible** — test SSH access with `ssh -T git@github.com` before starting stackd
-3. **`STACKS_DIR_<REPO>` is set** — the value must be a path that exists inside the mounted repo volume
-4. **Docker socket is mounted** — `docker compose` cannot run without it
-5. **Dashboard port is published** — add `ports: ["8080:8080"]` and set `DASHBOARD_ENABLED=true`
+1. **`SECRET_KEY` is set** — required; stackd exits immediately without it
+2. **`DB_URL` points into a mounted volume** — otherwise configuration is lost on container restart
+3. **Docker socket is mounted** — `docker compose` cannot run without it
+4. **Dashboard port is published** — add `ports: ["8080:8080"]`
+5. **At least one repository is configured** — use Settings → Repositories after first start
+
+---
+
+## Multi-Repo Setup
+
+Add as many repositories as you need through the Settings UI. Each repository syncs independently with its own interval and stacks directory. See [Multi-Repo Setup](multi-repo.md) for patterns and tips.
 
 ---
 
@@ -83,3 +105,6 @@ image: ghcr.io/antnsn/stackd:v1.2.3
 ```
 
 Available tags are listed at [ghcr.io/antnsn/stackd](https://github.com/antnsn/stackd/pkgs/container/stackd).
+```
+
+---

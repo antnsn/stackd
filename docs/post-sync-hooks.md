@@ -1,82 +1,50 @@
 # Post-Sync Hooks
 
-Post-sync hooks let you run an arbitrary shell command after stackd successfully pulls a repository, immediately before stacks are applied.
+> **Note:** The `POST_SYNC_<REPO>` environment variable from earlier versions of stackd has been removed. Per-repo post-sync shell commands are not currently supported as a built-in feature.
+
+If you need to run commands after a git pull or stack apply, the following alternatives work well.
 
 ---
 
-## What Hooks Are and When They Run
+## Alternatives
 
-The hook runs **after** a successful `git pull` (when the HEAD SHA has changed) and **before** `docker compose up -d` is applied to any stacks. This makes hooks useful for:
+### React to the Activity Feed
 
-- Running additional compose files not managed by stackd
-- Sending deployment notifications
-- Restarting ancillary services
-- Writing audit timestamps
+Subscribe to `GET /api/activity` from an external script and react to `done` events:
 
-If the hook fails (non-zero exit code), the failure is **logged as a warning** but stack applies still proceed. Hooks are best-effort — they do not gate deploys.
+```sh
+curl -s -N \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: text/event-stream" \
+  http://localhost:8080/api/activity | while IFS= read -r line; do
+    if echo "$line" | grep -q '"type":"done"'; then
+      echo "Deploy complete — trigger your hook here"
+    fi
+  done
+```
+
+This pattern works for webhooks, Slack notifications, CI triggers, or any other side-effect you previously relied on post-sync hooks for.
+
+### Container Entrypoint Hooks
+
+If your stack needs setup steps before the service starts, add them to the container's entrypoint or a custom init script in the compose file:
+
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    entrypoint: ["/bin/sh", "-c", "run-migrations.sh && exec myapp"]
+```
+
+### Docker Compose Profiles
+
+Use [Docker Compose profiles](https://docs.docker.com/compose/profiles/) to run one-off jobs (migrations, seed data) only when explicitly triggered, separate from the main services that stackd manages.
 
 ---
 
-## Configuration
+## Feature Requests
 
-Set `POST_SYNC_<REPO>` to any shell command. `<REPO>` is the uppercase directory name of the repository:
-
-```yaml
-environment:
-  - POST_SYNC_DOCKERS=echo "dockers repo synced"
-```
-
-The command is executed via `sh -c '<command>'`, so you can use pipes, redirects, and shell builtins. Stdout and stderr are captured and written to the stackd log at `info` level.
-
----
-
-## Examples
-
-### Run an Extra Compose File
-
-Apply an additional compose file that lives outside the managed stacks directory:
-
-```yaml
-- POST_SYNC_DOCKERS=docker compose -f /repos/dockers/extra/monitoring.yaml up -d
-```
-
-### Send a Webhook Notification
-
-Notify a chat system or CI pipeline after a successful sync:
-
-```yaml
-- POST_SYNC_HOMELAB=curl -s -X POST -H "Content-Type: application/json" \
-    -d '{"text":"homelab repo synced"}' \
-    https://hooks.slack.com/services/xxx/yyy/zzz
-```
-
-### Restart a Specific Container
-
-Force-restart a container that doesn't pick up compose changes automatically:
-
-```yaml
-- POST_SYNC_WORK=docker restart nginx-proxy
-```
-
-### Write a Timestamp File
-
-Record the last sync time for external monitoring:
-
-```yaml
-- POST_SYNC_DOCKERS=date -u +"%Y-%m-%dT%H:%M:%SZ" > /repos/dockers/.last-sync
+If per-repo post-sync hooks are important to your workflow, please open an issue at [github.com/antnsn/stackd/issues](https://github.com/antnsn/stackd/issues). The database-driven configuration model makes per-repo hook commands a natural addition as a first-class repo setting.
 ```
 
 ---
-
-## Error Handling
-
-If the hook command exits with a non-zero status, stackd:
-
-1. Logs a warning: `post-sync hook failed` with `repo`, `cmd`, and `err` fields
-2. **Continues** to apply stacks as normal
-
-This means a failing webhook or notification command will never block your deployment. If you need a hook failure to block deploys, wrap your command to always exit 0:
-
-```yaml
-- POST_SYNC_DOCKERS=my-critical-script.sh || true
-```

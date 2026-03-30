@@ -24,7 +24,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-The default database path is `stackd.db` in the working directory. Set `DB_URL` to an absolute path inside a mounted volume to make it explicit:
+The default `DB_URL` is `sqlite://stackd.db`, which writes to the container's working directory. This path is **not persisted** across restarts unless explicitly mounted. Always set `DB_URL` to a path inside a mounted volume:
 
 ```yaml
 DB_URL=sqlite:///data/stackd.db

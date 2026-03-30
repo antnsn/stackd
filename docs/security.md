@@ -4,18 +4,26 @@
 
 ## Dashboard Authentication
 
-By default, the dashboard API is open. Set `DASHBOARD_TOKEN` to require a bearer token on all `/api/*` endpoints:
+By default, the dashboard API is open. Protect it with a bearer token in one of two ways:
+
+**Option 1 — environment variable** (takes precedence, requires restart to change):
 
 ```yaml
 environment:
   - DASHBOARD_TOKEN=your-secret-token
 ```
 
+**Option 2 — Settings UI** (no restart needed, stored encrypted in the database):
+
+Open the dashboard → **Settings → General** → set **Dashboard Token** → Save.
+
 The dashboard UI sends the token automatically. When calling the API directly, include it in the `Authorization` header:
 
 ```sh
 curl -H "Authorization: Bearer your-secret-token" http://localhost:8080/api/status
 ```
+
+For WebSocket connections (web shell), pass the token as a `?token=` query parameter — the browser WebSocket API cannot send custom headers.
 
 If the token is missing or incorrect, the server returns `401 Unauthorized` with a `WWW-Authenticate: Bearer realm="stackd"` header.
 
@@ -64,7 +72,7 @@ stackd adds the following headers to every HTTP response:
 
 ## Secrets Masking in Logs
 
-Environment variable values whose names contain `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASS`, or `CREDENTIAL` are automatically replaced with `[redacted]` in all structured log output. Infisical tokens, dashboard tokens, and SSH key paths are never logged in plaintext.
+Environment variable values whose names contain `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASS`, or `CREDENTIAL` are automatically replaced with `[redacted]` in all structured log output. Infisical tokens, dashboard tokens, and SSH key material are never logged in plaintext.
 
 ---
 
@@ -78,14 +86,7 @@ Without a token, anyone who can reach the dashboard port can trigger syncs and r
 openssl rand -hex 32
 ```
 
-### Use PULL_ONLY=true
-
-Unless your workflow requires stackd to push commits, enable pull-only mode to prevent any git write operations:
-
-```yaml
-environment:
-  - PULL_ONLY=true
-```
+Set it via the `DASHBOARD_TOKEN` environment variable or through the Settings UI.
 
 ### Run Behind a Reverse Proxy with TLS
 
@@ -111,9 +112,12 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        # Required for SSE log streaming
+        # Required for SSE log streaming and WebSocket web shell
         proxy_buffering off;
         proxy_read_timeout 3600s;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 ```
@@ -121,3 +125,10 @@ server {
 ### Restrict Docker Socket Access
 
 The Docker socket (`/var/run/docker.sock`) grants root-equivalent access to the host. Consider using a Docker socket proxy (e.g. [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)) to restrict which Docker API calls stackd can make.
+
+### Keep SECRET_KEY Safe
+
+`SECRET_KEY` encrypts all sensitive values in the database (SSH private keys, tokens). Back it up separately from the database. If lost, stored secrets are permanently unrecoverable — you would need to re-enter all SSH keys and tokens.
+```
+
+---

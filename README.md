@@ -19,11 +19,15 @@ Think of it as ArgoCD for Docker Compose, without the YAML sprawl.
 - **GitOps sync** — polls one or more Git repos and applies `docker compose up -d` on change
 - **Infisical integration** — wraps deploys with `infisical run` to inject secrets; no `.env` files in Git
 - **Live dashboard** — dark-mode UI with stack status, container health, and real-time log streaming
-- **Pull-only mode** — sync without writing back to Git (recommended for most setups)
-- **Manual sync** — trigger a sync instantly from the dashboard without waiting for the next poll
-- **Multi-repo** — mount as many repos as you need; each gets its own sync loop and stack config
+- **Web shell** — browser-based terminal (docker exec PTY) for any running container via xterm.js
+- **Activity feed** — live SSE stream of git pulls and stack applies across all repos
+- **Per-stack sync** — trigger a pull + apply for a single stack from the detail panel
+- **Settings UI** — manage repos, SSH keys, Infisical credentials, and auth token from the dashboard
+- **Multi-repo** — manage as many repos as you need; each gets its own sync loop and stack config
 
 ## Quick Start
+
+> **Note:** `SECRET_KEY` is required. stackd will refuse to start without it — it encrypts SSH keys and tokens stored in the database.
 
 ```yaml
 services:
@@ -31,39 +35,50 @@ services:
     container_name: stackd
     image: ghcr.io/antnsn/stackd:latest
     environment:
-      - TZ=Europe/Oslo
-      - PULL_ONLY=true
-      - SSH_KEY_PATH=/root/.ssh/id_ed25519
-      - SYNC_INTERVAL_SECONDS=60
-      - STACKS_DIR_DOCKERS=/repos/dockers/linuxServer/stacks
-      - DASHBOARD_ENABLED=true
-      - DASHBOARD_PORT=8080
+      - SECRET_KEY=change-me-use-a-strong-random-value
+      - DB_URL=sqlite:///data/stackd.db
+      - PORT=8080
     volumes:
-      - /path/to/.ssh:/root/.ssh
-      - /path/to/repo/dockers:/repos/dockers
+      - /path/to/stackd-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
+    restart: unless-stopped
 ```
 
-Open `http://localhost:8080` to see the dashboard.
+Generate a strong `SECRET_KEY`:
+
+```sh
+openssl rand -hex 32
+```
+
+Then:
+
+```sh
+docker compose up -d
+```
+
+Open `http://localhost:8080` and use the **Settings** page to add your first repository.
 
 ## Documentation
 
 | | |
 |---|---|
-| [Configuration](docs/configuration.md) | All env vars, stackd.yaml schema, per-repo overrides |
+| [Configuration](docs/configuration.md) | All env vars and their defaults |
 | [Installation](docs/installation.md) | Docker Compose setup, volume mounts, first run |
-| [SSH Setup](docs/ssh.md) | SSH key configuration and troubleshooting |
-| [Infisical Secrets](docs/infisical.md) | Secrets injection — migrate compose files, global token, per-stack toml |
+| [SSH Setup](docs/ssh.md) | SSH key configuration via Settings UI and troubleshooting |
+| [Infisical Secrets](docs/infisical.md) | Secrets injection — global token, per-stack toml |
 | [Database](docs/database.md) | SQLite config store, SECRET_KEY, persistence, PostgreSQL option |
 | [Security](docs/security.md) | Auth, rate limiting, production hardening |
 | [Observability](docs/observability.md) | Logging, health probes, Prometheus metrics |
 | [API Reference](docs/api.md) | Full HTTP API with request/response examples |
 | [Multi-Repo Setup](docs/multi-repo.md) | Managing multiple repositories |
-| [Post-Sync Hooks](docs/post-sync-hooks.md) | Run commands after a successful sync |
+| [Post-Sync Hooks](docs/post-sync-hooks.md) | Alternatives now that env-var hooks are removed |
 | [Architecture](docs/architecture.md) | How stackd works internally |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+AGPL-3.0 — see [LICENSE](LICENSE). For commercial licensing, see [COMMERCIAL.md](COMMERCIAL.md).
+```
+
+---

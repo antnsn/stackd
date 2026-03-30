@@ -1,12 +1,14 @@
 # SSH Setup
 
-stackd uses SSH to authenticate with git hosts when cloning and pulling private repositories. This page explains how to configure SSH keys and troubleshoot common issues.
+stackd uses SSH to authenticate with git hosts when cloning and pulling private repositories. SSH keys are managed through the dashboard **Settings UI** and stored encrypted in the stackd database — no volume mounts or env vars required.
 
 ---
 
 ## Why SSH Is Needed
 
 Git over HTTPS requires interactive credentials that cannot be automated safely. SSH key authentication is non-interactive, works with all major git hosts (GitHub, GitLab, Gitea, self-hosted), and lets you scope access to a single deploy key per repository.
+
+For public repositories, no authentication is needed — leave the auth method set to **None** when adding the repo.
 
 ---
 
@@ -25,25 +27,24 @@ Generate an Ed25519 key:
 ssh-keygen -t ed25519 -C "stackd-deploy" -f ~/.ssh/id_ed25519_stackd
 ```
 
-Add the **public key** (`id_ed25519_stackd.pub`) as a deploy key in your git host's repository settings.
+Add the **public key** (`id_ed25519_stackd.pub`) as a deploy key in your git host's repository settings. Read-only access is sufficient.
 
 ---
 
-## Volume Mount and Configuration
+## Adding an SSH Key in the Settings UI
 
-Mount your SSH directory into the container and tell stackd where the key lives:
+1. Open the stackd dashboard → **Settings → SSH Keys**
+2. Click **Add SSH Key**
+3. Paste the contents of your **private key** file (e.g. `cat ~/.ssh/id_ed25519_stackd`)
+4. Give it a name (e.g. `github-deploy`) and save
 
-```yaml
-services:
-  stackd:
-    image: ghcr.io/antnsn/stackd:latest
-    environment:
-      - SSH_KEY_PATH=/root/.ssh/id_ed25519
-    volumes:
-      - /home/user/.ssh:/root/.ssh:ro
-```
+The key is encrypted with `SECRET_KEY` before being stored in the database and is never logged in plaintext.
 
-`SSH_KEY_PATH` defaults to `/root/.ssh/id_rsa` if not set.
+To use the key for a repository:
+
+1. Go to **Settings → Repositories** → select your repo → **Edit**
+2. Set **Auth Method** to **SSH Key** and select the key you just added
+3. Save
 
 ---
 
@@ -62,17 +63,7 @@ You do **not** need to pre-populate `~/.ssh/known_hosts` manually — stackd han
 
 ## Adding Other Git Hosts
 
-For GitLab, Gitea, or self-hosted hosts, extend `known_hosts` before stackd starts, or use a startup script:
-
-```sh
-# On the host, add keys for your git server
-ssh-keyscan gitlab.com >> /home/user/.ssh/known_hosts
-ssh-keyscan git.internal.example.com >> /home/user/.ssh/known_hosts
-```
-
-Because stackd sets `StrictHostKeyChecking no` in its generated SSH config, unknown hosts will not block connections — but explicitly adding keys is better practice for production.
-
-For multiple SSH keys (e.g. one per git host), write a custom `~/.ssh/config` on the host and mount it into the container alongside the keys.
+Because stackd sets `StrictHostKeyChecking no` in its generated SSH config, unknown hosts (GitLab, self-hosted Gitea, etc.) will connect without host key verification. This is convenient but means SSH host spoofing would not be caught at the SSH layer. Mitigate this by running stackd inside a trusted network and enforcing TLS at the reverse proxy.
 
 ---
 
@@ -80,12 +71,11 @@ For multiple SSH keys (e.g. one per git host), write a custom `~/.ssh/config` on
 
 ### Permission denied (publickey)
 
-- Confirm the public key is added as a deploy key in the repository settings
-- Verify key permissions: `chmod 600 ~/.ssh/id_ed25519`
-- Confirm the key path in `SSH_KEY_PATH` matches the filename inside the container
+- Confirm the **public key** is added as a deploy key in the repository settings on your git host
+- Confirm the correct SSH key is selected for the repo in **Settings → Repositories**
+- Test SSH auth from within a running stackd container:
 
 ```sh
-# Test SSH auth from within a running stackd container
 docker exec -it stackd ssh -T git@github.com
 ```
 
@@ -102,3 +92,7 @@ This should not occur because stackd sets `StrictHostKeyChecking no`. If it does
 
 - The deploy key must have **read** access to the repository
 - Confirm the git remote URL uses SSH format: `git@github.com:org/repo.git` (not `https://`)
+- Verify the correct SSH key is selected in Settings → Repositories for that repo
+```
+
+---
