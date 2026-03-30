@@ -120,28 +120,27 @@ See `.github/agents/` for specialized agents covering each delivery area:
 > Maintained by `.impeccable.md` — updated via `/teach-impeccable`. Used by all UI work and Impeccable skills.
 
 ### Users
-Home lab operators and small DevOps teams. They check this dashboard when something is
-wrong or to confirm everything is running. Technical, busy, impatient. Primary job:
-"Is everything up? What broke? Fix it now."
+**Homelabbers and DevOps engineers** managing self-hosted Docker Compose stacks. They open stackd with intent: checking if a deploy succeeded, diagnosing why a stack is unhealthy, triggering a manual sync. Technical, busy, impatient. Primary job: "Is everything up? What broke? Fix it fast."
 
 ### Brand Personality
-**Sharp. Technical. Precise.**
-Emotional goal: **Power** — the user should feel *in command* of their infrastructure.
-Anti-references: crowded, bloated interfaces. Consumer apps, pastel dashboards, "friendly" SaaS UIs.
-References: **GitHub** (discipline, dark palette, typographic precision) and **Grafana** (structured data, status clarity).
+**Sharp. Technical. Confident.**
+Emotional goal: **In control** — powerful and informed, like an operator with a clear readout.
+Reference: **ArgoCD** (stackd is ArgoCD for Docker Compose) + **GitHub** (palette discipline, typographic precision).
+Anti-references: Bootstrap boilerplate, consumer SaaS, pastel dashboards, Notion-template UIs.
 
 ### Aesthetic Direction
 - Dark only. Base `#0d1117`. No light mode.
 - Accent: electric indigo `#6c63ff` — reserved for actions/brand, never health states.
-- Typography: `DM Sans` for labels; `JetBrains Mono` for data, logs, SHAs. `Inter` is banned.
+- Typography: `DM Sans` for labels; `JetBrains Mono` for data, logs, SHAs, ports, paths. `Inter` is banned.
 - Zero decoration — no gradients on chrome, no shadows on cards, 1px solid borders only, max 6px radius.
-- Status colours (`#3fb950` / `#f85149` / `#d29922` / `#58a6ff`) are sacred — never reuse.
+- Status colours (`#3fb950` / `#f85149` / `#d29922` / `#58a6ff`) are sacred — never reuse for anything else.
 - Motion: sync spin + detail fade-in only. Always respect `prefers-reduced-motion`.
 
 ### Design Principles
-1. **Density over decoration** — every pixel carries information or structure.
-2. **Status first** — health state visible without reading text. Colour + shape.
+1. **Density over decoration** — every pixel carries information or structure. White space = separation, not aesthetics.
+2. **Status first** — health state visible without reading text. Colour + shape, never colour alone.
 3. **Hierarchy is the UX** — Repo → Stack → Container must be obvious at every level.
-4. **Actions are explicit** — no hover-only affordances; force sync always one click away.
-5. **Fail loudly, recover gracefully** — errors shown immediately with a clear next action.
-6. **Silent by default** — no gratuitous animation, labelling, or alerting.
+4. **Actions are secondary** — observation dashboard first; Sync/Apply/Stop visually subordinate to status.
+5. **Technical values deserve technical treatment** — monospace, muted, exact. Never truncate without tooltip.
+6. **No modal anxiety** — destructive actions need confirmation, nothing else should. Prefer inline state changes.
+7. **Fail loudly, recover gracefully** — errors shown immediately with a clear next action. Never silent failures.
