@@ -356,6 +356,17 @@ function GeneralTab() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [showPulls, setShowPulls] = useState(
+    () => localStorage.getItem('activity-show-pulls') === 'true'
+  )
+
+  const togglePulls = () => {
+    setShowPulls(v => {
+      const next = !v
+      localStorage.setItem('activity-show-pulls', String(next))
+      return next
+    })
+  }
 
   const load = () =>
     fetch('/api/settings/general')
@@ -459,6 +470,24 @@ function GeneralTab() {
             <input class="form-input" value={form.gitUserEmail} onInput={e => set('gitUserEmail', e.target.value)} />
           </label>
         </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Dashboard</h3>
+        <label class="toggle-row">
+          <span class="toggle-row__label">
+            Show repo pulls in activity feed
+            <span class="toggle-row__hint">Routine git pulls fire every sync interval — hide them to reduce noise</span>
+          </span>
+          <button
+            class={`toggle-btn${showPulls ? ' toggle-btn--on' : ''}`}
+            role="switch"
+            aria-checked={showPulls}
+            onClick={togglePulls}
+          >
+            <span class="toggle-btn__knob" />
+          </button>
+        </label>
       </div>
 
       <div class="form-actions">

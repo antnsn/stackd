@@ -326,12 +326,6 @@ export function ActivityFeed() {
     <div class={`activity-feed${fading ? ' activity-feed--fading' : ''}`} role="log" aria-live="polite" aria-label="Activity">
       <div class="activity-feed__header">
         <span class="activity-feed__title">Activity</span>
-        <button
-          class={`activity-feed__pulls-toggle${showPulls ? ' activity-feed__pulls-toggle--on' : ''}`}
-          onClick={togglePulls}
-          title={showPulls ? 'Hide repo pulls' : 'Show repo pulls'}
-          aria-pressed={showPulls}
-        >⇩ pulls</button>
         <button class="activity-feed__close" onClick={() => setVisible(false)} aria-label="Dismiss">×</button>
       </div>
       <ul class="activity-feed__list">
