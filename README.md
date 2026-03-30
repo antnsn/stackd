@@ -4,7 +4,8 @@
   <br/>
   <a href="https://github.com/antnsn/stackd/releases"><img src="https://img.shields.io/github/v/release/antnsn/stackd?style=flat-square&color=58a6ff" alt="Release"/></a>
   <a href="https://github.com/antnsn/stackd/pkgs/container/stackd"><img src="https://img.shields.io/badge/container-ghcr.io-3fb950?style=flat-square" alt="Container"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8b949e?style=flat-square" alt="MIT License"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-8b949e?style=flat-square" alt="AGPL-3.0 License"/></a>
+  <a href="COMMERCIAL.md"><img src="https://img.shields.io/badge/commercial-licensing-f78166?style=flat-square" alt="Commercial Licensing"/></a>
 </div>
 
 ---
