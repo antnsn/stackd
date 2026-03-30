@@ -3,3 +3,5 @@
 /issues
 .DS_Store
 **/.DS_Store
+.claude/
+.superset/
