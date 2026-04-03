@@ -643,11 +643,18 @@ export function Settings() {
         >
           Repositories
         </button>
+        <button
+          class={`settings-nav__item ${tab === 'infisical' ? 'active' : ''}`}
+          onClick={() => setTab('infisical')}
+        >
+          Infisical
+        </button>
       </nav>
       <div class="settings-content">
         {tab === 'general' && <GeneralTab />}
         {tab === 'ssh' && <SSHKeysTab onKeysChange={setSSHKeys} />}
         {tab === 'repos' && <ReposTab sshKeys={sshKeys} />}
+        {tab === 'infisical' && <InfisicalTab />}
       </div>
     </div>
   )
