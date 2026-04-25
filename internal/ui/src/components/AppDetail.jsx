@@ -281,6 +281,7 @@ function LogStream({ containerName }) {
   const [filterText,   setFilterText]   = useState('')
   const [atBottom,     setAtBottom]     = useState(true)
   const [copied,       setCopied]       = useState(false)
+  const [copyError,    setCopyError]    = useState('')
   const [scrollTop,    setScrollTop]    = useState(0)
   const [viewportH,    setViewportH]    = useState(0)
 
@@ -403,13 +404,53 @@ function LogStream({ containerName }) {
     setAtBottom(true)
   }, [])
 
-  const copyAll = useCallback(() => {
+  const copyAll = useCallback(async () => {
     const text = linesRef.current.map(l => `${l.timeStr}  ${l.text}`).join('\n')
     if (!text) return
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }).catch(() => {})
+    setCopyError('')
+
+    const flash = (ok, msg = '') => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        setCopyError(msg || 'Copy failed')
+        setTimeout(() => setCopyError(''), 4000)
+      }
+    }
+
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        flash(true)
+        return
+      } catch (e) {
+        // Fall through to legacy path below
+      }
+    }
+
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.top = '0'
+      ta.style.left = '0'
+      ta.style.opacity = '0'
+      ta.style.pointerEvents = 'none'
+      document.body.appendChild(ta)
+      try {
+        ta.focus()
+        ta.select()
+        ta.setSelectionRange(0, text.length)
+        const ok = document.execCommand('copy')
+        flash(ok, ok ? '' : 'Copy unavailable — select & ⌘C')
+      } finally {
+        ta.remove()
+      }
+    } catch (e) {
+      flash(false, 'Copy unavailable — select & ⌘C')
+    }
   }, [])
 
   // ── Compute visible window ───────────────────────────
@@ -455,13 +496,13 @@ function LogStream({ containerName }) {
           <span class="log-line-count">{totalCount.toLocaleString()} lines</span>
         ) : null}
         <button
-          class={`log-copy-btn${copied ? ' log-copy-btn--done' : ''}`}
+          class={`log-copy-btn${copied ? ' log-copy-btn--done' : ''}${copyError ? ' log-copy-btn--error' : ''}`}
           onClick={copyAll}
           disabled={totalCount === 0}
-          title="Copy all logs to clipboard"
+          title={copyError || 'Copy all logs to clipboard'}
           aria-label="Copy all logs"
         >
-          {copied ? '✓ Copied' : '⎘ Copy'}
+          {copyError ? `⚠ ${copyError}` : copied ? '✓ Copied' : '⎘ Copy'}
         </button>
       </div>
 
