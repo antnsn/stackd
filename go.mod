@@ -6,7 +6,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/moby/moby/api v1.54.0
+	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.3.0
 	golang.org/x/crypto v0.49.0
 	modernc.org/sqlite v1.48.2
