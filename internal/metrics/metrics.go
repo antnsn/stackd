@@ -3,6 +3,8 @@ package metrics
 import (
 	"fmt"
 	"net/http"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 	"time"
 )
@@ -87,4 +89,19 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	for repo, ts := range lastSyncTS {
 		fmt.Fprintf(w, "stackd_last_sync_timestamp{repo=%q} %d\n", repo, ts)
 	}
+
+	// Runtime gauges — exposed so operators can spot the historical PID/thread
+	// leak before it crashes the process. A steadily climbing goroutine or
+	// thread count between sync rounds means a subprocess is hanging.
+	fmt.Fprintf(w, "# HELP stackd_goroutines Number of goroutines currently in flight.\n")
+	fmt.Fprintf(w, "# TYPE stackd_goroutines gauge\n")
+	fmt.Fprintf(w, "stackd_goroutines %d\n", runtime.NumGoroutine())
+
+	threads := 0
+	if p := pprof.Lookup("threadcreate"); p != nil {
+		threads = p.Count()
+	}
+	fmt.Fprintf(w, "# HELP stackd_threads Number of OS threads created by the Go runtime (cumulative high-water mark).\n")
+	fmt.Fprintf(w, "# TYPE stackd_threads gauge\n")
+	fmt.Fprintf(w, "stackd_threads %d\n", threads)
 }

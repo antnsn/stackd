@@ -509,23 +509,65 @@
   outline-offset: 2px;
 }
 
-/* ── Canvas log viewer ───────────────────────────── */
-/* OffscreenCanvas renders directly — container is the
-   touch/wheel target and positions overlay controls.  */
-.logs-canvas-wrap {
+/* ── Virtualized log viewer ──────────────────────── */
+/* Native scroll container. Only the rows in the viewport
+   are mounted (logs-window is translateY'd inside a tall
+   sizing spacer), but the user gets full native text
+   selection, Cmd/Ctrl-C copy, and find-in-page. */
+.logs-scroller {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   background: var(--bg-primary);
-  touch-action: none; /* let JS handle touch scroll */
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 19px;
+  color: var(--text-primary);
 }
 
-.logs-canvas {
-  display: block;
+.logs-spacer {
+  position: relative;
   width: 100%;
-  height: 100%;
 }
+
+.logs-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.log-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 0 10px 0 12px;
+  height: 19px;
+  white-space: pre;
+  border-left: 2px solid transparent;
+}
+
+.log-row-time {
+  flex: 0 0 74px;
+  color: var(--text-muted, #6e7681);
+  user-select: none;        /* keep timestamp out of copy by default */
+  -webkit-user-select: none;
+}
+
+.log-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+  white-space: pre;
+}
+
+.log-row--error  { border-left-color: #f85149; }
+.log-row--error  .log-row-text { color: #ff7b72; }
+.log-row--warn   { border-left-color: #d29922; }
+.log-row--warn   .log-row-text { color: #e3b341; }
+.log-row--debug  .log-row-text { color: #79c0ff; }
 
 .logs-canvas-empty {
   position: absolute;

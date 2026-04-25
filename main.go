@@ -19,6 +19,7 @@ import (
 	cryptoModule "stackd/internal/crypto"
 	"stackd/internal/db"
 	"stackd/internal/docker"
+	"stackd/internal/execpg"
 	"stackd/internal/git"
 	"stackd/internal/metrics"
 	"stackd/internal/server"
@@ -208,7 +209,7 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 
 	if !hasToml && cfg.Token == "" {
 		slog.Info("applying stack", "stack", stackName, "infisical", false)
-		return exec.CommandContext(ctx, "docker", "compose", "up", "-d")
+		return execpg.CommandContext(ctx, "docker", "compose", "up", "-d")
 	}
 
 	if hasToml {
@@ -218,7 +219,7 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 		}
 		args = append(args, "--", "docker", "compose", "up", "-d")
 		slog.Info("stack using per-stack infisical.toml", "stack", stackName)
-		return exec.CommandContext(ctx, "infisical", args...)
+		return execpg.CommandContext(ctx, "infisical", args...)
 	}
 
 	args := []string{"run", "--token=" + cfg.Token, "--env=" + cfg.Env}
@@ -230,7 +231,7 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 	}
 	args = append(args, "--", "docker", "compose", "up", "-d")
 	slog.Info("stack using global infisical token", "stack", stackName, "env", cfg.Env)
-	return exec.CommandContext(ctx, "infisical", args...)
+	return execpg.CommandContext(ctx, "infisical", args...)
 }
 
 // refreshContainers updates container details for all stacks whose StackDir is

@@ -213,6 +213,10 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 The stream stays open until the client disconnects or the container stops. Returns `503 Service Unavailable` if the Docker client is unavailable.
 
+#### Dashboard log viewer
+
+The dashboard renders this stream through a virtualized DOM list so it stays responsive at high log volumes (soft cap: 50,000 lines). A consequence of virtualization is that only the rows currently in the viewport are mounted in the DOM — browser **find-in-page (Cmd/Ctrl-F)** therefore only sees the visible window. Use the in-app **"Filter logs…"** input above the viewer to search across the full buffer; the count badge shows how many lines match. Native **Cmd/Ctrl-C** and drag-selection work as expected for any text currently visible, and the **⎘ Copy** button copies the entire buffer to the clipboard.
+
 ---
 
 ### GET /api/exec/{container}

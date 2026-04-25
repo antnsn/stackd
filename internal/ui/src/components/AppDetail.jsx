@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks'
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'preact/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
@@ -245,119 +245,88 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
   )
 }
 
-// ── LogStream — OffscreenCanvas + Web Worker ──────────
-// Renders log lines on a canvas in a background worker thread.
-// Handles unlimited line volume at 60fps. Spring physics for
-// scroll-to-bottom; manual wheel scroll is always immediate.
+// ── LogStream — virtualized DOM list ──────────────────
+// Renders log lines as recycled <div> rows so native browser
+// text selection, Cmd/Ctrl-C copy, find-in-page, and screen
+// readers all work. Only the rows currently in the viewport
+// are mounted; the rest is a tall sizing spacer.
 
-// LINE_H must match the constant in logWorker.js
-const LOG_LINE_H = 19
+const LOG_LINE_H  = 19
+const LOG_BUFFER  = 8        // extra rows above/below viewport
+const LOG_MAX     = 50_000   // cap total retained lines (≈ 950k px scroll height)
+const STICK_BOTTOM_PX = 6    // treat as "at bottom" if within this many px
+
+function classifyLevel(t) {
+  const l = t.toLowerCase()
+  if (l.includes('error') || l.includes('fatal') || l.includes('panic') || l.includes('critical')) return 'error'
+  if (l.includes('warn'))                                                                          return 'warn'
+  if (l.includes('debug') || l.includes('trace'))                                                  return 'debug'
+  return ''
+}
 
 function LogStream({ containerName }) {
-  const canvasRef    = useRef(null)
-  const containerRef = useRef(null)
-  const workerRef    = useRef(null)
-  const scrollRef    = useRef(0)        // current scroll position
-  const esRef        = useRef(null)
-  const bufferRef    = useRef([])
-  const flushTimer   = useRef(null)
-  const totalHRef    = useRef(0)
-  const atBottomRef  = useRef(true)
+  const wrapRef       = useRef(null)
+  const linesRef      = useRef([])     // all retained {text, timeStr, level}
+  const filteredRef   = useRef([])     // current filtered view (===linesRef when no filter)
+  const filterTextRef = useRef('')     // latest filter text — read by flush() to avoid stale closures
+  const esRef         = useRef(null)
+  const bufferRef     = useRef([])
+  const flushTimer    = useRef(null)
+  const atBottomRef   = useRef(true)
 
+  const [tick,         setTick]         = useState(0)         // bump to re-render after ref mutations
   const [totalCount,   setTotalCount]   = useState(0)
   const [visibleCount, setVisibleCount] = useState(0)
   const [streamEnded,  setStreamEnded]  = useState(false)
   const [filterText,   setFilterText]   = useState('')
   const [atBottom,     setAtBottom]     = useState(true)
   const [copied,       setCopied]       = useState(false)
+  const [scrollTop,    setScrollTop]    = useState(0)
+  const [viewportH,    setViewportH]    = useState(0)
 
-  useEffect(() => { atBottomRef.current = atBottom }, [atBottom])
+  const bump = useCallback(() => setTick(t => (t + 1) & 0xffff), [])
 
-  const sendScroll = useCallback(v => {
-    const clamped = Math.max(0, v)
-    scrollRef.current = clamped
-    workerRef.current?.postMessage({ type: 'scroll', scrollTop: clamped })
+  const refilter = useCallback(() => {
+    const f = filterTextRef.current.toLowerCase()
+    filteredRef.current = f
+      ? linesRef.current.filter(l => l.text.toLowerCase().includes(f))
+      : linesRef.current
+    setVisibleCount(filteredRef.current.length)
   }, [])
 
-  // ── Worker + canvas init ──────────────────────────
-  useEffect(() => {
-    const canvas    = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-
-    if (typeof OffscreenCanvas === 'undefined' || !canvas.transferControlToOffscreen) {
-      return
-    }
-
-    const worker = new Worker(
-      new URL('../workers/logWorker.js', import.meta.url),
-      { type: 'module' }
-    )
-    workerRef.current = worker
-
-    worker.onmessage = ({ data }) => {
-      if (data.type === 'metrics') {
-        totalHRef.current = data.totalHeight
-      }
-      if (data.type === 'count') {
-        setTotalCount(data.total)
-        setVisibleCount(data.visible)
-        if (atBottomRef.current) {
-          const h   = containerRef.current?.clientHeight ?? 0
-          const max = Math.max(0, data.visible * LOG_LINE_H - h)
-          sendScroll(max)
-        }
-      }
-      if (data.type === 'allLines') {
-        navigator.clipboard.writeText(data.text).then(() => {
-          setCopied(true)
-          setTimeout(() => setCopied(false), 2000)
-        }).catch(() => {})
-      }
-    }
-
-    const rect = container.getBoundingClientRect()
-    const dpr  = window.devicePixelRatio || 1
-    const offscreen = canvas.transferControlToOffscreen()
-    worker.postMessage(
-      { type: 'init', canvas: offscreen, width: rect.width, height: rect.height, dpr },
-      [offscreen]
-    )
-
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect
-      worker.postMessage({ type: 'resize', width: Math.floor(width), height: Math.floor(height) })
-    })
-    ro.observe(container)
-
-    return () => {
-      worker.terminate()
-      workerRef.current = null
-      ro.disconnect()
-    }
-  }, [sendScroll])
-
-  // ── SSE stream ────────────────────────────────────
+  // ── SSE stream ───────────────────────────────────────
   const startStream = useCallback(() => {
     esRef.current?.close()
     clearTimeout(flushTimer.current)
-    bufferRef.current = []
+    bufferRef.current   = []
+    linesRef.current    = []
+    filteredRef.current = linesRef.current
+    setTotalCount(0)
+    setVisibleCount(0)
     setStreamEnded(false)
-    workerRef.current?.postMessage({ type: 'clear' })
-    sendScroll(0)
     atBottomRef.current = true
     setAtBottom(true)
+    if (wrapRef.current) wrapRef.current.scrollTop = 0
+    bump()
 
     const es = new EventSource(`/api/logs/${containerName}`)
 
     const flush = () => {
-      if (bufferRef.current.length > 0 && workerRef.current) {
-        workerRef.current.postMessage({ type: 'lines', lines: bufferRef.current.splice(0) })
-      }
+      if (bufferRef.current.length === 0) return
+      const incoming = bufferRef.current.splice(0)
+      const all = linesRef.current
+      for (const ln of incoming) all.push(ln)
+      // Apply soft cap so we never blow past browser scroll-height limits.
+      if (all.length > LOG_MAX) all.splice(0, all.length - LOG_MAX)
+      refilter()
+      setTotalCount(all.length)
+      bump()
     }
 
     es.onmessage = e => {
-      bufferRef.current.push({ text: e.data, timeStr: new Date().toLocaleTimeString() })
+      const text    = e.data
+      const timeStr = new Date().toLocaleTimeString()
+      bufferRef.current.push({ text, timeStr, level: classifyLevel(text) })
       clearTimeout(flushTimer.current)
       flushTimer.current = setTimeout(flush, 16)
     }
@@ -368,7 +337,7 @@ function LogStream({ containerName }) {
     }
 
     esRef.current = es
-  }, [containerName, sendScroll])
+  }, [containerName, refilter, bump])
 
   useEffect(() => {
     startStream()
@@ -378,52 +347,82 @@ function LogStream({ containerName }) {
     }
   }, [containerName])
 
-  // ── Filter ────────────────────────────────────────
+  // ── Filter: rebuild visible slice. On user-driven filter changes
+  // (not the initial empty-filter mount) also reset scroll to top
+  // and detach bottom-pinning so the user sees their match in place.
   useEffect(() => {
-    workerRef.current?.postMessage({ type: 'filter', text: filterText })
-  }, [filterText])
+    const prev = filterTextRef.current
+    filterTextRef.current = filterText
+    refilter()
+    if (prev !== filterText) {
+      if (wrapRef.current) wrapRef.current.scrollTop = 0
+      atBottomRef.current = false
+      setAtBottom(false)
+    }
+    bump()
+  }, [filterText, refilter, bump])
 
-  // ── Scroll controls ───────────────────────────────
+  // ── Viewport size tracking ───────────────────────────
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const ro = new ResizeObserver(([entry]) => {
+      setViewportH(entry.contentRect.height)
+    })
+    ro.observe(wrap)
+    setViewportH(wrap.clientHeight)
+    return () => ro.disconnect()
+  }, [])
+
+  // ── Pin to bottom while user is at the bottom ────────
+  useLayoutEffect(() => {
+    if (!atBottomRef.current) return
+    const wrap = wrapRef.current
+    if (!wrap) return
+    wrap.scrollTop = wrap.scrollHeight
+  }, [tick, viewportH])
+
+  // ── Scroll handler: update derived state + at-bottom flag.
+  const handleScroll = useCallback(e => {
+    const wrap = e.currentTarget
+    const max  = wrap.scrollHeight - wrap.clientHeight
+    const here = wrap.scrollTop
+    setScrollTop(here)
+    const nowAtBottom = here >= max - STICK_BOTTOM_PX
+    if (atBottomRef.current !== nowAtBottom) {
+      atBottomRef.current = nowAtBottom
+      setAtBottom(nowAtBottom)
+    }
+  }, [])
+
   const scrollToBottom = useCallback(() => {
-    const h   = containerRef.current?.clientHeight ?? 0
-    const max = Math.max(0, totalHRef.current - h)
-    sendScroll(max)
+    const wrap = wrapRef.current
+    if (!wrap) return
+    wrap.scrollTop = wrap.scrollHeight
     atBottomRef.current = true
     setAtBottom(true)
-  }, [sendScroll])
-
-  const handleWheel = useCallback(e => {
-    e.preventDefault()
-    const h   = containerRef.current?.clientHeight ?? 0
-    const max = Math.max(0, totalHRef.current - h)
-    const next = Math.max(0, Math.min(scrollRef.current + e.deltaY, max))
-    sendScroll(next)
-    const nowAtBottom = next >= max - 5
-    atBottomRef.current = nowAtBottom
-    setAtBottom(nowAtBottom)
-  }, [sendScroll])
-
-  // Touch scroll
-  const touchStartY = useRef(0)
-  const handleTouchStart = useCallback(e => {
-    touchStartY.current = e.touches[0].clientY
   }, [])
-  const handleTouchMove = useCallback(e => {
-    e.preventDefault()
-    const dy = touchStartY.current - e.touches[0].clientY
-    touchStartY.current = e.touches[0].clientY
-    const h   = containerRef.current?.clientHeight ?? 0
-    const max = Math.max(0, totalHRef.current - h)
-    const next = Math.max(0, Math.min(scrollRef.current + dy, max))
-    sendScroll(next)
-    const nowAtBottom = next >= max - 5
-    atBottomRef.current = nowAtBottom
-    setAtBottom(nowAtBottom)
-  }, [sendScroll])
 
   const copyAll = useCallback(() => {
-    workerRef.current?.postMessage({ type: 'getLines' })
+    const text = linesRef.current.map(l => `${l.timeStr}  ${l.text}`).join('\n')
+    if (!text) return
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
   }, [])
+
+  // ── Compute visible window ───────────────────────────
+  // Trade-off: only the visible slice is mounted, so browser Cmd-F won't reach
+  // offscreen rows. This is intentional — at LOG_MAX (50k) lines a fully-mounted
+  // DOM would jank. Use the in-app "Filter logs…" input above to search the full
+  // buffer; native Cmd-C/drag-select still works for any visible text.
+  const total  = filteredRef.current.length
+  const totalH = total * LOG_LINE_H
+  const first  = Math.max(0, Math.floor(scrollTop / LOG_LINE_H) - LOG_BUFFER)
+  const last   = Math.min(total, Math.ceil((scrollTop + viewportH) / LOG_LINE_H) + LOG_BUFFER)
+  const slice  = filteredRef.current.slice(first, last)
+  const offset = first * LOG_LINE_H
 
   const showEmpty = totalCount === 0 && !streamEnded
 
@@ -467,15 +466,26 @@ function LogStream({ containerName }) {
       </div>
 
       <div
-        ref={containerRef}
-        class="logs-canvas-wrap"
-        onWheel={handleWheel}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
+        ref={wrapRef}
+        class="logs-scroller"
+        onScroll={handleScroll}
         aria-label={`Log output for ${containerName}`}
-        role="img"
+        role="log"
+        aria-live="off"
       >
-        <canvas ref={canvasRef} class="logs-canvas" />
+        <div class="logs-spacer" style={{ height: `${totalH}px` }}>
+          <div class="logs-window" style={{ transform: `translateY(${offset}px)` }}>
+            {slice.map((ln, i) => (
+              <div
+                key={first + i}
+                class={`log-row${ln.level ? ' log-row--' + ln.level : ''}`}
+              >
+                <span class="log-row-time">{ln.timeStr}</span>
+                <span class="log-row-text">{ln.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
         {showEmpty && (
           <div class="logs-canvas-empty" aria-live="polite">Waiting for logs…</div>
         )}
