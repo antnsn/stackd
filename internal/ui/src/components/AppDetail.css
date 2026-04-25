@@ -499,6 +499,11 @@
   border-color: var(--status-ok);
 }
 
+.log-copy-btn--error {
+  color: var(--status-error);
+  border-color: var(--status-error);
+}
+
 .log-copy-btn:disabled {
   opacity: 0.4;
   cursor: default;
