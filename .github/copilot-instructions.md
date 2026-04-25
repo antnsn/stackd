@@ -54,6 +54,12 @@ stackd/
 - **Frontend:** Keep Preact components small and focused. CSS modules per component. No external UI libraries.
 - **Comments:** Only comment non-obvious logic. Self-documenting names are preferred.
 
+## Pre-Push Workflow
+
+- **Always run `codex:review` before any `git push`.** No exceptions — including bugfixes, doc updates, and "trivial" changes.
+- Address every finding from the review (or explicitly justify why a finding is not actionable) before pushing.
+- If `codex:review` is skipped or fails, the push is not allowed; fix the issues locally and re-run the review until clean.
+
 ## Key Data Flow
 
 ```

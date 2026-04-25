@@ -141,3 +141,28 @@ Suggested panels for a Grafana dashboard:
 - **Containers running** — `stackd_containers_running` — gauge panel per stack
 - **Last sync age** — `time() - stackd_last_sync_timestamp` — how stale each repo is (alert if > 2× interval)
 - **Apply failures** — `increase(stackd_stack_apply_total{status="error"}[1h])` — failed applies in the last hour
+- **Goroutine count** — `stackd_goroutines` — should be flat between sync rounds. A steady upward slope means a subprocess is hanging (see [Subprocess leak guard](#subprocess-leak-guard)).
+- **Thread high-water mark** — `stackd_threads` — cumulative OS threads created by the Go runtime. Sudden growth correlates with hung subprocesses leaking PIDs into the per-user `nproc` budget.
+
+## Subprocess Leak Guard
+
+stackd shells out to `git`, `ssh`, `docker compose`, and `infisical`. Each invocation now runs in its own process group, and stackd kills the entire group on context cancel (see `internal/execpg`). `GIT_SSH_COMMAND` also enforces `ConnectTimeout`, `ServerAliveInterval`, `ServerAliveCountMax`, and `BatchMode=yes` so a stalled SSH connection cannot wedge a sync forever.
+
+If you observe `stackd_goroutines` or `stackd_threads` climbing without bound — historically this preceded a `runtime: failed to create new OS thread (have N want M)` panic when the process hit `RLIMIT_NPROC` — capture a goroutine dump (`SIGQUIT` to the process) and open an issue.
+
+### Mitigations
+
+- Run the container with a generous nproc limit until you have confirmed the leak is gone in your environment:
+
+  ```bash
+  docker run --ulimit nproc=65535:65535 ...
+  ```
+
+  Equivalent in `docker-compose.yml`:
+
+  ```yaml
+  ulimits:
+    nproc: 65535
+  ```
+
+- Alert on `stackd_threads` growth: `deriv(stackd_threads[1h]) > 0` sustained for several hours indicates a regression.
