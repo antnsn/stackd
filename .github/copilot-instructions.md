@@ -54,11 +54,33 @@ stackd/
 - **Frontend:** Keep Preact components small and focused. CSS modules per component. No external UI libraries.
 - **Comments:** Only comment non-obvious logic. Self-documenting names are preferred.
 
-## Pre-Push Workflow
+## Pre-Push & Pre-Completion Code Review
 
-- **Always run `codex:review` before any `git push`.** No exceptions — including bugfixes, doc updates, and "trivial" changes.
-- Address every finding from the review (or explicitly justify why a finding is not actionable) before pushing.
-- If `codex:review` is skipped or fails, the push is not allowed; fix the issues locally and re-run the review until clean.
+**MANDATORY for every agent (Claude, Copilot CLI, Codex, Cursor, etc.) — no exceptions, including bugfixes, doc updates, dependency bumps, and "trivial" changes.**
+
+- Before declaring a task complete **and** before any `git push`, run a code review using your client's review skill:
+  - Copilot CLI: `/copilot:review`
+  - Codex CLI: `/codex:review`
+  - Any equivalent automated reviewer the client provides.
+- Address every finding from the review, or explicitly justify in writing why a finding is not actionable, before pushing or marking the task done.
+- If the review is skipped or fails, the push / task-complete state is **not** allowed; fix the issues locally and re-run the review until clean.
+
+## Issue Tracking — Beads
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` for full workflow context.
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work atomically
+bd close <id>         # Complete work
+bd dolt push          # Push beads data to remote
+```
+
+Rules:
+- Use `bd` for all task tracking. Do not maintain TODO lists in markdown.
+- Use `bd remember` for persistent knowledge — do not create `MEMORY.md` files.
+- Session-close workflow (file follow-ups → quality gates → `git pull --rebase` → `bd dolt push` → `git push` → verify "up to date with origin") is mandatory; see `CLAUDE.md` / `AGENTS.md` for the full checklist.
 
 ## Key Data Flow
 

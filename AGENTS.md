@@ -2,6 +2,18 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
+## Pre-Push & Pre-Completion Code Review
+
+**MANDATORY for every agent (Claude, Copilot CLI, Codex, Cursor, etc.):**
+
+- Before declaring a task complete **and** before any `git push`, run a code review using your client's review skill. Examples:
+  - Copilot CLI: `/copilot:review`
+  - Codex CLI: `/codex:review`
+  - Any equivalent automated reviewer the client provides.
+- Address every finding, or explicitly justify in writing why a finding is not actionable, before pushing or marking the task done.
+- If the review is skipped or fails, the push / task-complete state is **not** allowed. Fix the issues locally and re-run the review until clean.
+- This applies to bugfixes, doc-only changes, dependency bumps, and "trivial" edits — no exceptions.
+
 ## Quick Reference
 
 ```bash
