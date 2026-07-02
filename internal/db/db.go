@@ -59,7 +59,16 @@ func Open(dbURL string) (*sql.DB, error) {
 	switch scheme {
 	case "sqlite":
 		filePath := strings.TrimPrefix(dbURL, "sqlite://")
-		db, err = sql.Open("sqlite", filePath)
+		// busy_timeout makes a connection wait (up to 5s) for a competing writer
+		// to finish instead of failing immediately with SQLITE_BUSY. Without it the
+		// sync loop and concurrent settings writes can collide under WAL.
+		dsn := filePath
+		if strings.Contains(dsn, "?") {
+			dsn += "&_pragma=busy_timeout(5000)"
+		} else {
+			dsn += "?_pragma=busy_timeout(5000)"
+		}
+		db, err = sql.Open("sqlite", dsn)
 		if err != nil {
 			return nil, fmt.Errorf("db.Open sqlite: %w", err)
 		}

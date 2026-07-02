@@ -103,12 +103,19 @@ export function App() {
 
   // Keep selectedStack live — sync it from repos on every poll so container
   // status reflects reality immediately after a start/stop/restart action.
+  // Only setState when the fresh stack actually differs from the selected one,
+  // otherwise every 5s poll re-renders the detail panel needlessly.
   useEffect(() => {
     if (!selectedStack) return
     for (const repo of repos) {
       if (repo.name !== selectedStack.repoName) continue
       const fresh = (repo.stacks || []).find(s => s.name === selectedStack.name)
-      if (fresh) setSelectedStack({ ...fresh, repoName: repo.name })
+      if (fresh) {
+        const next = { ...fresh, repoName: repo.name }
+        if (JSON.stringify(next) !== JSON.stringify(selectedStack)) {
+          setSelectedStack(next)
+        }
+      }
       break
     }
   }, [repos])

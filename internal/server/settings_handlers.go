@@ -102,8 +102,20 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 	if req.Remote == "" {
 		req.Remote = "origin"
 	}
-	if req.SyncInterval <= 0 {
-		req.SyncInterval = 60
+	if err := git.ValidateRef(req.Remote); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := git.ValidateRef(req.Branch); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// A syncInterval of 0 means "inherit default_sync_interval" (resolved at sync
+	// time); only negatives are invalid. Do NOT coerce 0 to 60 here — that would
+	// make the default_sync_interval setting dead for newly created repos.
+	if req.SyncInterval < 0 {
+		jsonError(w, "syncInterval must not be negative", http.StatusBadRequest)
+		return
 	}
 	if req.StacksDir == "" {
 		req.StacksDir = "."
@@ -188,9 +200,17 @@ func (s *Server) handleUpdateRepo(w http.ResponseWriter, r *http.Request) {
 		existing.URL = req.URL
 	}
 	if req.Branch != "" {
+		if err := git.ValidateRef(req.Branch); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		existing.Branch = req.Branch
 	}
 	if req.Remote != "" {
+		if err := git.ValidateRef(req.Remote); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		existing.Remote = req.Remote
 	}
 	if req.AuthType != "" {
@@ -400,8 +420,12 @@ func (s *Server) handleUpdateGeneralSettings(w http.ResponseWriter, r *http.Requ
 	if req.GitUserEmail != nil {
 		updates = append(updates, kv{"git_user_email", *req.GitUserEmail})
 	}
+	// Defer applying the live token until AFTER the DB write succeeds, so a
+	// persistence failure never leaves the running token out of sync with what is
+	// stored (which would lock the operator out after a restart).
+	var pendingToken string
 	if req.DashboardToken != nil && *req.DashboardToken != "" {
-		s.SetToken(*req.DashboardToken)
+		pendingToken = *req.DashboardToken
 		updates = append(updates, kv{"dashboard_token", *req.DashboardToken})
 	}
 	if req.DefaultSyncInterval != nil && *req.DefaultSyncInterval > 0 {
@@ -413,6 +437,9 @@ func (s *Server) handleUpdateGeneralSettings(w http.ResponseWriter, r *http.Requ
 			jsonError(w, "failed to update setting: "+u.key, http.StatusInternalServerError)
 			return
 		}
+	}
+	if pendingToken != "" {
+		s.SetToken(pendingToken)
 	}
 	jsonOK(w, map[string]bool{"ok": true})
 }

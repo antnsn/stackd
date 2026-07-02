@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'preact/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative } from '../utils/time.js'
-import { withToken } from '../utils/auth.js'
+import { withToken, subscribe, getToken, needsLogin } from '../utils/auth.js'
 import './RepoCardsView.css'
 
 const KNOWN_REGISTRIES = [
@@ -260,6 +260,12 @@ export function ActivityFeed() {
   const [showPulls, setShowPulls] = useState(
     () => localStorage.getItem('activity-show-pulls') === 'true'
   )
+  // Current auth token drives the EventSource lifecycle: when it rotates or
+  // clears we tear down and re-open with the fresh token instead of letting a
+  // stale connection retry forever.
+  const [token, setToken] = useState(getToken())
+  const [disconnected, setDisconnected] = useState(false)
+  const [reconnectNonce, setReconnectNonce] = useState(0)
   const fadeTimer = useRef(null)
   const timersRef = useRef(new Set())
 
@@ -291,9 +297,20 @@ export function ActivityFeed() {
     return () => clearTimeout(fadeTimer.current)
   }, [events, visible])
 
+  // Re-open the stream with a fresh token whenever auth state changes
+  // (login, logout, 401). Without this the EventSource keeps replaying a stale
+  // token param and silently retries forever after a rotation.
+  useEffect(() => subscribe(() => setToken(getToken())), [])
+
   useEffect(() => {
+    // Don't open an unauthenticated stream — the app is showing the login gate.
+    if (needsLogin()) { setDisconnected(false); return }
+
+    let failures = 0
     const es = new EventSource(withToken('/api/activity'))
     es.onmessage = e => {
+      failures = 0
+      setDisconnected(false)
       try {
         const ev = JSON.parse(e.data)
         // Repo-level pull events (no stack) — suppress unless opted in
@@ -330,9 +347,43 @@ export function ActivityFeed() {
         }
       } catch {}
     }
-    es.onerror = () => {}
+    es.onerror = () => {
+      // EventSource auto-retries transient errors (readyState → CONNECTING).
+      // If it gives up (CLOSED) or keeps failing, stop the silent retry loop
+      // and surface a visible disconnected state instead. An auth-related
+      // failure will have flipped needsLogin() via a 401 elsewhere, which the
+      // token subscription above picks up to reconnect (or gate the app).
+      failures += 1
+      if (es.readyState === EventSource.CLOSED || failures >= 3) {
+        es.close()
+        setDisconnected(true)
+      }
+    }
     return () => es.close()
-  }, [])
+  }, [token, reconnectNonce])
+
+  if (disconnected) {
+    return (
+      <div class="activity-feed" role="status" aria-live="polite" aria-label="Activity">
+        <div class="activity-feed__header">
+          <span class="activity-feed__title">Activity</span>
+          <button class="activity-feed__close" onClick={() => setDisconnected(false)} aria-label="Dismiss">×</button>
+        </div>
+        <ul class="activity-feed__list">
+          <li class="activity-event activity-event--error">
+            <span class="activity-event__icon" aria-hidden="true">✕</span>
+            <span class="activity-event__msg">Activity stream disconnected</span>
+            <button
+              class="activity-feed__reconnect"
+              onClick={() => { setDisconnected(false); setReconnectNonce(n => n + 1) }}
+            >
+              Reconnect
+            </button>
+          </li>
+        </ul>
+      </div>
+    )
+  }
 
   if (!visible || events.length === 0) return null
 

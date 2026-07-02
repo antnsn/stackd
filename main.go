@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"stackd/internal/compose"
 	cryptoModule "stackd/internal/crypto"
 	"stackd/internal/db"
 	"stackd/internal/docker"
@@ -45,11 +46,10 @@ var repoBackoffs sync.Map // key: repo name (string), value: *syncBackoff
 var repoLocks sync.Map    // key: repo name (string), value: *sync.Mutex
 var repoNextDue sync.Map  // key: repo name (string), value: time.Time (next scheduled sync)
 
-// composeCandidates is the ordered list of compose filenames stackd recognises.
-// A single shared list keeps discovery consistent across every code path.
-var composeCandidates = []string{
-	"compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml",
-}
+// sshTempDir is the private directory (0700) into which decrypted SSH private
+// keys are written. main() points it at <cloneDir>/.ssh so keys never land in
+// world-readable /tmp. Empty falls back to the OS temp dir.
+var sshTempDir string
 
 // repoLock returns the per-repo mutex, serialising all git work for a repo so
 // concurrent syncs (scheduled + manual + per-stack apply) cannot race on the
@@ -133,7 +133,15 @@ func setupGitAuth(ctx context.Context, repo db.RepoDB, cryptoKey []byte, sqlDB *
 			if err != nil {
 				return opts, cleanup, fmt.Errorf("decrypt SSH key: %w", err)
 			}
-			f, err := os.CreateTemp("", "stackd-key-*")
+			// OpenSSH rejects a private key that lacks a trailing newline while
+			// gossh.ParsePrivateKey (used at create time) accepts it, so a key
+			// that validated on save would fail every git sync. Ensure exactly one.
+			if !strings.HasSuffix(privKey, "\n") {
+				privKey += "\n"
+			}
+			// Write the key into the private sshTempDir (0700) rather than the
+			// world-readable OS temp dir.
+			f, err := os.CreateTemp(sshTempDir, "stackd-key-*")
 			if err != nil {
 				return opts, cleanup, fmt.Errorf("create temp key file: %w", err)
 			}
@@ -293,14 +301,13 @@ func extractErrorSummary(output string, fallback string) string {
 }
 
 //
-// Infisical secrets injection is applied when INFISICAL_ENABLED=true.
-// Auth priority:
+// Infisical secrets injection is applied automatically when credentials are
+// available. Auth priority:
 //  1. Per-stack infisical.toml in the stack directory (--config=<path>)
-//  2. Global INFISICAL_TOKEN + INFISICAL_ENV env vars
+//  2. A global Infisical token configured in settings (InfisicalConfig.Token)
 //
-// If neither token nor toml is available and INFISICAL_ENABLED=true, a warning
-// is logged and the stack is applied without secrets injection.
-// INFISICAL_URL can point to a self-hosted Infisical instance.
+// When neither a token nor a toml is present, the stack is applied without
+// secrets injection. InfisicalConfig.URL can point to a self-hosted instance.
 
 // buildComposeCmd constructs the exec.Cmd to apply a stack. It returns either a bare
 // "docker compose up -d" or an "infisical run -- docker compose up -d" command depending
@@ -311,7 +318,7 @@ func extractErrorSummary(output string, fallback string) string {
 // inject something useful. Stacks with no variable references get no indicator
 // even when a global token is configured.
 func composeUsesEnvVars(stackPath string) bool {
-	for _, name := range composeCandidates {
+	for _, name := range compose.Candidates {
 		data, err := os.ReadFile(filepath.Join(stackPath, name))
 		if err != nil {
 			continue
@@ -390,13 +397,22 @@ func refreshContainers(ctx context.Context, store *state.Store, holder *docker.C
 	}
 	client := holder.Get()
 	if client == nil {
-		if c, err := docker.New(); err == nil {
-			slog.Info("docker client reconnected")
-			holder.Set(c)
-			client = c
-		} else {
+		c, err := docker.New()
+		if err != nil {
 			slog.Warn("docker reconnection failed", "err", err)
 			return
+		}
+		// Publish atomically: if a concurrent caller already reconnected, we lose
+		// the race and must Close our client so it is not leaked.
+		if holder.CompareAndSwap(nil, c) {
+			slog.Info("docker client reconnected")
+			client = c
+		} else {
+			_ = c.Close()
+			client = holder.Get()
+			if client == nil {
+				return
+			}
 		}
 	}
 	for _, st := range store.GetAllStacks() {
@@ -550,7 +566,7 @@ func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state
 		stackName := entry.Name()
 		stackPath := filepath.Join(stacksDir, stackName)
 		composePath := ""
-		for _, candidate := range composeCandidates {
+		for _, candidate := range compose.Candidates {
 			p := filepath.Join(stackPath, candidate)
 			if _, err := os.Stat(p); err == nil {
 				composePath = p
@@ -568,11 +584,13 @@ func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state
 // syncRepoFromDB brings the repo's clone up to date and applies stacks if the
 // SHA changed. It acquires the per-repo lock so concurrent syncs (scheduled,
 // manual, per-stack apply) are serialised.
-func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, holder *docker.ClientHolder, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
+func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, holder *docker.ClientHolder, infisicalCfg InfisicalConfig, bus *state.ActivityBus, defaultInterval time.Duration) {
 	repoName := repo.Name
 	start := time.Now()
 
-	syncInterval := effectiveInterval(repo, loadDefaultInterval(ctx, sqlDB))
+	// defaultInterval is resolved once by the caller (per sync round / startup)
+	// so there is no unbounded per-repo DB query in the sync path.
+	syncInterval := effectiveInterval(repo, defaultInterval)
 
 	if store != nil {
 		existing, ok := store.GetRepo(repoName)
@@ -633,7 +651,9 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 		return
 	}
 
-	if newSHA != oldSHA || oldSHA == "" {
+	// A non-empty oldSHA that differs re-applies; an empty oldSHA (fresh start)
+	// always differs from a real SHA, so it is covered by newSHA != oldSHA.
+	if newSHA != oldSHA {
 		stacksDir := filepath.Join(destDir, repo.StacksDir)
 		runStacksSync(ctx, stacksDir, repoName, store, holder, infisicalCfg, bus)
 	}
@@ -756,6 +776,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Private SSH dir ---
+	// Keep the managed known_hosts and decrypted private keys out of the
+	// world-writable /tmp default. Unless the operator pinned SSH_KNOWN_HOSTS_DIR
+	// explicitly, point both git's known_hosts (via the env var read in
+	// internal/git) and our key temp dir at a private <cloneDir>/.ssh (0700).
+	sshDir := os.Getenv("SSH_KNOWN_HOSTS_DIR")
+	if sshDir == "" {
+		sshDir = filepath.Join(cloneDir, ".ssh")
+		if err := os.Setenv("SSH_KNOWN_HOSTS_DIR", sshDir); err != nil {
+			slog.Error("failed to set SSH_KNOWN_HOSTS_DIR", "err", err)
+			os.Exit(1)
+		}
+	}
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		slog.Error("failed to create ssh dir", "dir", sshDir, "err", err)
+		os.Exit(1)
+	}
+	sshTempDir = sshDir
+
 	// --- State store ---
 	store := state.New()
 	if strings.ToLower(os.Getenv("DEV_SEED")) == "true" {
@@ -792,12 +831,13 @@ func main() {
 	} else {
 		startupSettingsCtx, startupSettingsCancel := context.WithTimeout(ctx, 5*time.Second)
 		startupInfCfg := loadInfisicalFromDB(startupSettingsCtx, sqlDB, cryptoKey)
+		startupDefaultInterval := loadDefaultInterval(startupSettingsCtx, sqlDB)
 		startupSettingsCancel()
 		for _, repo := range startupRepos {
 			if !repo.Enabled {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, startupInfCfg, activityBus)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, startupInfCfg, activityBus, startupDefaultInterval)
 		}
 		refreshContainers(ctx, store, dockerHolder)
 	}
@@ -809,7 +849,7 @@ func main() {
 	// Set the dashboard token, fail-closed: env var wins, then a persisted
 	// token, otherwise generate a random one and persist it so auth is ALWAYS
 	// enabled (an empty token would leave the API unauthenticated).
-	if err := ensureDashboardToken(srv, sqlDB); err != nil {
+	if err := ensureDashboardToken(srv, sqlDB, cloneDir); err != nil {
 		slog.Error("failed to initialise dashboard token", "err", err)
 		os.Exit(1)
 	}
@@ -873,13 +913,13 @@ func main() {
 				continue
 			}
 			if shouldSkipSync(repo.Name) {
-				slog.Info("skipping sync (backoff)", "repo", repo.Name)
+				slog.Debug("skipping sync (backoff)", "repo", repo.Name)
 				continue
 			}
 			if !dueForSync(repo.Name) {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, infisicalCfg, activityBus)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, infisicalCfg, activityBus, defaultInterval)
 		}
 		refreshContainers(ctx, store, dockerHolder)
 	}
@@ -934,7 +974,7 @@ func main() {
 				}
 				slog.Info("manual sync triggered", "repo", repo.Name)
 				resetBackoff(repo.Name)
-				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, trigInfCfg, activityBus)
+				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, trigInfCfg, activityBus, defaultInterval)
 			}
 			refreshContainers(ctx, store, dockerHolder)
 			ticker.Reset(baseTick)
@@ -945,10 +985,13 @@ func main() {
 // ensureDashboardToken sets the dashboard bearer token fail-closed:
 //   - DASHBOARD_TOKEN env var takes precedence,
 //   - otherwise a persisted dashboard_token is used,
-//   - otherwise a random 32-byte token is generated, persisted, and logged once.
+//   - otherwise a random 32-byte token is generated, persisted, and written to
+//     <cloneDir>/dashboard_token (0600) for the operator to retrieve.
 //
-// The result is that API authentication is ALWAYS enabled.
-func ensureDashboardToken(srv *server.Server, sqlDB *sql.DB) error {
+// The generated token value is never logged (only the path to the file is), so
+// the secret does not leak into stdout / log aggregation. API authentication is
+// ALWAYS enabled.
+func ensureDashboardToken(srv *server.Server, sqlDB *sql.DB, cloneDir string) error {
 	if envToken := os.Getenv("DASHBOARD_TOKEN"); envToken != "" {
 		srv.SetToken(envToken)
 		return nil
@@ -967,11 +1010,20 @@ func ensureDashboardToken(srv *server.Server, sqlDB *sql.DB) error {
 		return fmt.Errorf("generate dashboard token: %w", err)
 	}
 	token := base64.RawURLEncoding.EncodeToString(buf)
+	// Write the retrieval file FIRST and only persist to the DB once the operator
+	// has a way to read the token. Otherwise a failed file write would leave an
+	// unknown token committed to the DB — on the next start it would be loaded and
+	// the file-write path skipped, locking the operator out permanently. The token
+	// value is never logged (only the path is), so it doesn't leak to log stores.
+	tokenPath := filepath.Join(cloneDir, "dashboard_token")
+	if err := os.WriteFile(tokenPath, []byte(token+"\n"), 0600); err != nil {
+		return fmt.Errorf("write dashboard token file %s: %w", tokenPath, err)
+	}
 	if err := db.SetSetting(ctx, sqlDB, "dashboard_token", token); err != nil {
 		return fmt.Errorf("persist dashboard token: %w", err)
 	}
 	srv.SetToken(token)
-	slog.Warn("generated dashboard token: "+token+" — set DASHBOARD_TOKEN to override", "token", token)
+	slog.Warn("generated dashboard token — retrieve it from the token file or set DASHBOARD_TOKEN to override", "path", tokenPath)
 	return nil
 }
 
