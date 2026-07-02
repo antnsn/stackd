@@ -716,12 +716,11 @@ func main() {
 		os.Exit(1)
 	}
 	// SECRET_KEY feeds HKDF, which does no work-factor stretching, so a
-	// high-entropy key is required. Enforce a minimum length to reject trivially
-	// weak keys. (We do NOT change the derivation itself — that would invalidate
-	// all existing ciphertext.)
+	// high-entropy key is required. Warn (do not fail) on short keys: a hard
+	// error would brick existing deployments on upgrade, and changing the
+	// derivation itself would invalidate all existing ciphertext.
 	if len(secretKey) < 16 {
-		slog.Error("SECRET_KEY must be at least 16 characters (use a high-entropy random value)")
-		os.Exit(1)
+		slog.Warn("SECRET_KEY is shorter than 16 characters; use a high-entropy random value of at least 16 characters", "length", len(secretKey))
 	}
 	cloneDir := os.Getenv("CLONE_DIR")
 	if cloneDir == "" {
