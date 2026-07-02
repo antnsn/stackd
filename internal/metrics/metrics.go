@@ -5,9 +5,19 @@ import (
 	"net/http"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"time"
 )
+
+// labelReplacer escapes characters that are special in Prometheus label values
+// (backslash, double-quote, newline) per the exposition format spec, so that a
+// repo/stack name containing them cannot corrupt or inject into the output.
+var labelReplacer = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
+
+func escapeLabel(v string) string {
+	return labelReplacer.Replace(v)
+}
 
 var mu sync.RWMutex
 
@@ -65,29 +75,39 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 
+	fmt.Fprintf(w, "# HELP stackd_sync_total Total repo sync attempts by status.\n")
+	fmt.Fprintf(w, "# TYPE stackd_sync_total counter\n")
 	for repo, statuses := range syncTotal {
 		for status, count := range statuses {
-			fmt.Fprintf(w, "stackd_sync_total{repo=%q,status=%q} %d\n", repo, status, count)
+			fmt.Fprintf(w, "stackd_sync_total{repo=\"%s\",status=\"%s\"} %d\n", escapeLabel(repo), escapeLabel(status), count)
 		}
 	}
 
+	fmt.Fprintf(w, "# HELP stackd_sync_duration_seconds Repo sync duration summary.\n")
+	fmt.Fprintf(w, "# TYPE stackd_sync_duration_seconds summary\n")
 	for repo, sum := range syncDurationSum {
-		fmt.Fprintf(w, "stackd_sync_duration_seconds_sum{repo=%q} %.4f\n", repo, sum)
-		fmt.Fprintf(w, "stackd_sync_duration_seconds_count{repo=%q} %d\n", repo, syncDurationCount[repo])
+		fmt.Fprintf(w, "stackd_sync_duration_seconds_sum{repo=\"%s\"} %.4f\n", escapeLabel(repo), sum)
+		fmt.Fprintf(w, "stackd_sync_duration_seconds_count{repo=\"%s\"} %d\n", escapeLabel(repo), syncDurationCount[repo])
 	}
 
+	fmt.Fprintf(w, "# HELP stackd_stack_apply_total Total stack apply attempts by status.\n")
+	fmt.Fprintf(w, "# TYPE stackd_stack_apply_total counter\n")
 	for stack, statuses := range applyTotal {
 		for status, count := range statuses {
-			fmt.Fprintf(w, "stackd_stack_apply_total{stack=%q,status=%q} %d\n", stack, status, count)
+			fmt.Fprintf(w, "stackd_stack_apply_total{stack=\"%s\",status=\"%s\"} %d\n", escapeLabel(stack), escapeLabel(status), count)
 		}
 	}
 
+	fmt.Fprintf(w, "# HELP stackd_containers_running Running containers per stack.\n")
+	fmt.Fprintf(w, "# TYPE stackd_containers_running gauge\n")
 	for key, count := range containersRunning {
-		fmt.Fprintf(w, "stackd_containers_running{stack=%q} %d\n", key, count)
+		fmt.Fprintf(w, "stackd_containers_running{stack=\"%s\"} %d\n", escapeLabel(key), count)
 	}
 
+	fmt.Fprintf(w, "# HELP stackd_last_sync_timestamp Unix timestamp of last successful sync.\n")
+	fmt.Fprintf(w, "# TYPE stackd_last_sync_timestamp gauge\n")
 	for repo, ts := range lastSyncTS {
-		fmt.Fprintf(w, "stackd_last_sync_timestamp{repo=%q} %d\n", repo, ts)
+		fmt.Fprintf(w, "stackd_last_sync_timestamp{repo=\"%s\"} %d\n", escapeLabel(repo), ts)
 	}
 
 	// Runtime gauges — exposed so operators can spot the historical PID/thread

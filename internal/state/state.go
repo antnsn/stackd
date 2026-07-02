@@ -8,7 +8,7 @@ import (
 
 // ActivityEvent is a single live activity notification.
 type ActivityEvent struct {
-	Type  string `json:"type"`  // "pulling", "applying", "done", "error"
+	Type  string `json:"type"` // "pulling", "applying", "done", "error"
 	Repo  string `json:"repo"`
 	Stack string `json:"stack,omitempty"` // empty for repo-level events
 	Msg   string `json:"msg"`

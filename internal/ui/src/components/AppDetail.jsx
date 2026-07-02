@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'preac
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
+import { apiFetch, withToken } from '../utils/auth.js'
 import '@xterm/xterm/css/xterm.css'
 import './AppDetail.css'
 
@@ -115,6 +116,10 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
             />
           )}
         </>
+      ) : stack.status === 'applying' ? (
+        <div class="empty-state-inline">
+          <span class="ctrl-spinner" aria-hidden="true" /> Applying…
+        </div>
       ) : (
         <div class="empty-state-inline">
           No containers found for this stack.
@@ -145,11 +150,15 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
   const [activeAction, setActiveAction] = useState(null)
   const [pendingStop, setPendingStop] = useState(false)
   const [stopTimer, setStopTimer] = useState(null)
+  const actionResetTimer = useRef(null)
 
   // Reset to smart default whenever the user switches to a different container
   useEffect(() => {
     setTab(getDefaultTab(container, lastError))
   }, [container.name])
+
+  // Clear the pending action-feedback timer on unmount.
+  useEffect(() => () => clearTimeout(actionResetTimer.current), [])
 
   const isRunning = container.status === 'running'
   const isStopped = container.status === 'stopped' || container.status === 'exited'
@@ -158,7 +167,7 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
     setActiveAction(action)
     setActionState('loading')
     try {
-      const res = await fetch(`/api/containers/${encodeURIComponent(container.name)}/${action}`, { method: 'POST' })
+      const res = await apiFetch(`/api/containers/${encodeURIComponent(container.name)}/${action}`, { method: 'POST' })
       const body = await res.json()
       if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`)
       setActionState({ ok: true })
@@ -166,7 +175,8 @@ function ContainerDetail({ container, onRefresh, repoName, stackName, lastOutput
     } catch (e) {
       setActionState({ err: e.message })
     } finally {
-      setTimeout(() => { setActionState(null); setActiveAction(null) }, 2000)
+      clearTimeout(actionResetTimer.current)
+      actionResetTimer.current = setTimeout(() => { setActionState(null); setActiveAction(null) }, 2000)
     }
   }
 
@@ -273,6 +283,7 @@ function LogStream({ containerName }) {
   const bufferRef     = useRef([])
   const flushTimer    = useRef(null)
   const atBottomRef   = useRef(true)
+  const copyTimerRef  = useRef(null)
 
   const [tick,         setTick]         = useState(0)         // bump to re-render after ref mutations
   const [totalCount,   setTotalCount]   = useState(0)
@@ -310,7 +321,7 @@ function LogStream({ containerName }) {
     if (wrapRef.current) wrapRef.current.scrollTop = 0
     bump()
 
-    const es = new EventSource(`/api/logs/${containerName}`)
+    const es = new EventSource(withToken(`/api/logs/${containerName}`))
 
     const flush = () => {
       if (bufferRef.current.length === 0) return
@@ -345,6 +356,7 @@ function LogStream({ containerName }) {
     return () => {
       esRef.current?.close()
       clearTimeout(flushTimer.current)
+      clearTimeout(copyTimerRef.current)
     }
   }, [containerName])
 
@@ -410,12 +422,13 @@ function LogStream({ containerName }) {
     setCopyError('')
 
     const flash = (ok, msg = '') => {
+      clearTimeout(copyTimerRef.current)
       if (ok) {
         setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
       } else {
         setCopyError(msg || 'Copy failed')
-        setTimeout(() => setCopyError(''), 4000)
+        copyTimerRef.current = setTimeout(() => setCopyError(''), 4000)
       }
     }
 
@@ -652,7 +665,7 @@ function ComposeViewer({ repoName, stackName, lastError }) {
   useEffect(() => {
     setContent(null)
     setError(null)
-    fetch(`/api/stacks/${encodeURIComponent(repoName)}/${encodeURIComponent(stackName)}/compose`)
+    apiFetch(`/api/stacks/${encodeURIComponent(repoName)}/${encodeURIComponent(stackName)}/compose`)
       .then(r => r.ok ? r.text() : Promise.reject(r.statusText))
       .then(setContent)
       .catch(e => setError(String(e)))
@@ -695,13 +708,20 @@ function TerminalPanel({ containerID }) {
   useEffect(() => {
     if (!containerRef.current) return
 
-    let cleanup = () => {}
+    // Guards against the async import resolving after unmount: without it the
+    // .then() would open a WebSocket that never closes and call term.open()/
+    // ro.observe() with a null ref (TypeError in an unhandled rejection).
+    let cancelled = false
+    let localWs = null
+    let ro = null
+    let dataDispose = null
 
     // Lazy-load xterm to avoid paying bundle cost until the Shell tab is opened
     Promise.all([
       import('@xterm/xterm'),
       import('@xterm/addon-fit'),
     ]).then(([{ Terminal }, { FitAddon }]) => {
+      if (cancelled || !containerRef.current) return
       // Reuse existing terminal instance across reconnects, create on first open
       let term = termRef.current
       if (!term) {
@@ -736,9 +756,10 @@ function TerminalPanel({ containerID }) {
       }
 
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-      const ws = new WebSocket(`${proto}://${window.location.host}/api/exec/${containerID}`)
+      const ws = new WebSocket(withToken(`${proto}://${window.location.host}/api/exec/${containerID}`))
       ws.binaryType = 'arraybuffer'
       wsRef.current = ws
+      localWs = ws
 
       ws.onopen = () => {
         setConnected(true)
@@ -759,27 +780,24 @@ function TerminalPanel({ containerID }) {
       }
       ws.onerror = () => term.write('\r\n\x1b[31m[connection error]\x1b[0m\r\n')
 
-      const dataDispose = term.onData(data => {
+      dataDispose = term.onData(data => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
       })
 
-      const ro = new ResizeObserver(() => {
+      ro = new ResizeObserver(() => {
         fitRef.current?.fit()
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
         }
       })
       ro.observe(containerRef.current)
-
-      cleanup = () => {
-        ro.disconnect()
-        dataDispose.dispose()
-        ws.close()
-      }
-    })
+    }).catch(() => { /* import failed or component torn down */ })
 
     return () => {
-      cleanup()
+      cancelled = true
+      ro?.disconnect()
+      dataDispose?.dispose()
+      localWs?.close()
     }
   }, [containerID, key])
 

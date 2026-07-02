@@ -2,12 +2,14 @@ package git
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"stackd/internal/execpg"
@@ -17,67 +19,127 @@ import (
 type AuthOpts struct {
 	Type       string // "none", "ssh", "pat"
 	SSHKeyPath string // path to private key file (for ssh)
-	PAT        string // personal access token (for pat — injected into URL)
+	PAT        string // personal access token (for pat — injected via http header)
 }
 
-// Clone clones repoURL into destDir. If destDir already contains a git repo
-// (.git exists), Pull is called instead.
-func Clone(ctx context.Context, repoURL, destDir string, opts AuthOpts) error {
-	gitDir := filepath.Join(destDir, ".git")
-	if _, err := os.Stat(gitDir); err == nil {
-		// Repo already exists — pull instead.
-		return Pull(ctx, destDir, "origin", "HEAD", opts)
-	}
+// gitAllowProtocol restricts the transports git is willing to use. It defeats
+// malicious remote helpers such as ext::/fd:: that would otherwise let a
+// crafted repo URL execute arbitrary commands.
+const gitAllowProtocol = "GIT_ALLOW_PROTOCOL=ssh:https:git:http"
 
-	cloneURL := repoURL
-	if opts.Type == "pat" && opts.PAT != "" {
-		cloneURL = injectPAT(repoURL, opts.PAT)
-	}
+// credentialInURL matches the userinfo portion of a URL (scheme://user:pass@host).
+var credentialInURL = regexp.MustCompile(`://[^/@\s]*@`)
 
-	args := []string{"clone", cloneURL, destDir}
-	cmd := execpg.CommandContext(ctx, "git", args...)
-	applySSHEnv(cmd, opts)
-	slog.Debug("git clone", "url", repoURL, "dest", destDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git clone %s: %w\noutput: %s", repoURL, err, out)
+// Redact replaces userinfo credentials embedded in URLs (scheme://user:pass@host)
+// with scheme://***@host so tokens embedded in a remote URL never reach logs or
+// stored error strings.
+func Redact(s string) string {
+	return credentialInURL.ReplaceAllString(s, "://***@")
+}
+
+var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// ValidateRepoName rejects repo names that could be used to escape the clone
+// directory via path traversal (e.g. "..", "../x") or that contain path
+// separators / shell metacharacters.
+func ValidateRepoName(name string) error {
+	if name == "." || name == ".." || !repoNameRe.MatchString(name) {
+		return fmt.Errorf("invalid repo name %q: must match [A-Za-z0-9._-] and not be '.' or '..'", name)
 	}
 	return nil
 }
 
-// Pull fetches and merges the remote branch into current HEAD.
-func Pull(ctx context.Context, repoDir, remote, branch string, opts AuthOpts) error {
-	if opts.Type == "pat" && opts.PAT != "" {
-		// For PAT auth we need to set the remote URL with credentials embedded.
-		// Get current remote URL first.
-		getURLCmd := execpg.CommandContext(ctx, "git", "-C", repoDir, "remote", "get-url", remote)
-		rawURL, err := getURLCmd.Output()
-		if err == nil {
-			patURL := injectPAT(strings.TrimSpace(string(rawURL)), opts.PAT)
-			setURLCmd := execpg.CommandContext(ctx, "git", "-C", repoDir, "remote", "set-url", remote, patURL)
-			if out, err := setURLCmd.CombinedOutput(); err != nil {
-				slog.Warn("git remote set-url failed", "err", err, "output", string(out))
-			} else {
-				// Restore original URL after pull.
-				origURL := strings.TrimSpace(string(rawURL))
-				defer func() {
-					restoreCmd := execpg.CommandContext(context.Background(), "git", "-C", repoDir, "remote", "set-url", remote, origURL)
-					if out, err := restoreCmd.CombinedOutput(); err != nil {
-						slog.Warn("git remote restore-url failed", "err", err, "output", string(out))
-					}
-				}()
-			}
+// scpLikeRe matches scp-style git remotes: user@host:path (no scheme).
+var scpLikeRe = regexp.MustCompile(`^[^\s/@:]+@[^\s/:]+:.+$`)
+
+// ValidateRepoURL rejects repo URLs that could be abused for argument injection
+// or arbitrary command execution. It allows https/http/ssh/git schemes and
+// scp-like git@host:path syntax, and rejects the ext::/file::/fd:: transports
+// as well as any value beginning with '-' (which git would treat as a flag).
+func ValidateRepoURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty repo URL")
+	}
+	if strings.HasPrefix(raw, "-") {
+		return fmt.Errorf("repo URL must not begin with '-'")
+	}
+	lower := strings.ToLower(raw)
+	for _, bad := range []string{"ext::", "file::", "fd::"} {
+		if strings.HasPrefix(lower, bad) {
+			return fmt.Errorf("repo URL uses forbidden transport %q", bad)
 		}
 	}
-
-	args := []string{"-C", repoDir, "pull", remote}
-	if branch != "" && branch != "HEAD" {
-		args = append(args, branch)
+	// scp-like syntax (git@host:path) has no scheme.
+	if !strings.Contains(raw, "://") {
+		if scpLikeRe.MatchString(raw) {
+			return nil
+		}
+		return fmt.Errorf("repo URL %q is not a valid git remote", raw)
 	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("parse repo URL: %w", err)
+	}
+	switch u.Scheme {
+	case "https", "http", "ssh", "git":
+		return nil
+	default:
+		return fmt.Errorf("unsupported repo URL scheme %q", u.Scheme)
+	}
+}
+
+// SyncRepo brings destDir to the tip of remote/branch. When destDir has no .git
+// it performs a fresh clone; otherwise it fetches and hard-resets so that a
+// force-pushed remote or a locally-dirty working tree cannot wedge the repo
+// into permanent failure (the historical "git pull" fragility). Credentials
+// are supplied per-command (SSH key env or an http.extraHeader) and are never
+// written to .git/config.
+func SyncRepo(ctx context.Context, destDir, repoURL, remote, branch string, opts AuthOpts) error {
+	if remote == "" {
+		remote = "origin"
+	}
+	gitDir := filepath.Join(destDir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		if err := cloneRepo(ctx, repoURL, destDir, opts); err != nil {
+			return err
+		}
+	}
+	// Always fetch + hard-reset, even right after a fresh clone, so the configured
+	// branch is honoured immediately and a dirty/force-pushed tree self-heals.
+	return fetchReset(ctx, destDir, remote, branch, opts)
+}
+
+func cloneRepo(ctx context.Context, repoURL, destDir string, opts AuthOpts) error {
+	// "--" ensures a repoURL or destDir starting with '-' cannot be parsed as a flag.
+	args := append(patConfigArgs(opts), "clone", "--", repoURL, destDir)
 	cmd := execpg.CommandContext(ctx, "git", args...)
-	applySSHEnv(cmd, opts)
-	slog.Debug("git pull", "dir", repoDir, "remote", remote, "branch", branch)
+	applyGitEnv(cmd, opts)
+	slog.Debug("git clone", "dest", destDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git pull %s %s: %w\noutput: %s", remote, branch, err, out)
+		return fmt.Errorf("git clone: %w\noutput: %s", err, Redact(string(out)))
+	}
+	return nil
+}
+
+func fetchReset(ctx context.Context, repoDir, remote, branch string, opts AuthOpts) error {
+	fetchArgs := append(patConfigArgs(opts), "-C", repoDir, "fetch", "--prune", "--", remote)
+	fetchCmd := execpg.CommandContext(ctx, "git", fetchArgs...)
+	applyGitEnv(fetchCmd, opts)
+	slog.Debug("git fetch", "dir", repoDir, "remote", remote)
+	if out, err := fetchCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch: %w\noutput: %s", err, Redact(string(out)))
+	}
+
+	ref := "FETCH_HEAD"
+	if branch != "" && branch != "HEAD" {
+		ref = remote + "/" + branch
+	}
+	resetCmd := execpg.CommandContext(ctx, "git", "-C", repoDir, "reset", "--hard", ref)
+	applyGitEnv(resetCmd, opts)
+	slog.Debug("git reset --hard", "dir", repoDir, "ref", ref)
+	if out, err := resetCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git reset --hard %s: %w\noutput: %s", ref, err, Redact(string(out)))
 	}
 	return nil
 }
@@ -93,7 +155,9 @@ func HeadSHA(ctx context.Context, repoDir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// injectPAT returns a copy of rawURL with the PAT injected as username (and empty password).
+// injectPAT returns a copy of rawURL with the PAT injected as username (and empty
+// password). Retained for reference/testing; the clone/fetch paths inject the
+// credential via an http.extraHeader instead so it never lands in .git/config.
 func injectPAT(rawURL, pat string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -103,28 +167,63 @@ func injectPAT(rawURL, pat string) string {
 	return u.String()
 }
 
-// applySSHEnv sets GIT_SSH_COMMAND on cmd if SSH auth is configured.
+// patConfigArgs returns "-c http.extraHeader=..." args carrying a PAT as an HTTP
+// Basic credential. Passing it on the command line (not "git remote set-url")
+// keeps the token out of .git/config and out of the persisted remote URL.
+func patConfigArgs(opts AuthOpts) []string {
+	if opts.Type == "pat" && opts.PAT != "" {
+		basic := base64.StdEncoding.EncodeToString([]byte(opts.PAT + ":"))
+		return []string{"-c", "http.extraHeader=Authorization: Basic " + basic}
+	}
+	return nil
+}
+
+// applyGitEnv sets GIT_ALLOW_PROTOCOL on every git command and GIT_SSH_COMMAND
+// when SSH auth is configured.
+func applyGitEnv(cmd *exec.Cmd, opts AuthOpts) {
+	env := append(os.Environ(), gitAllowProtocol)
+	if opts.Type == "ssh" && opts.SSHKeyPath != "" {
+		env = append(env, sshCommandEnv(opts.SSHKeyPath))
+	}
+	cmd.Env = env
+}
+
+// sshCommandEnv builds the GIT_SSH_COMMAND value.
+//
+// StrictHostKeyChecking=accept-new implements trust-on-first-use: the first key
+// seen for a host is pinned into a managed known_hosts file, and any later
+// change to that host's key is rejected (defends against MITM after the initial
+// fetch). This replaces the previous StrictHostKeyChecking=no +
+// UserKnownHostsFile=/dev/null, which accepted any key on every connection.
 //
 // Timeout flags are critical: without ConnectTimeout / ServerAliveInterval the
 // ssh subprocess can hang indefinitely on a dead TCP connection, and because
-// ssh is spawned by git (not directly by stackd) it survived the historical
-// SIGKILL-the-direct-child cancellation, leaking PIDs until the per-user nproc
-// limit was hit. BatchMode disables interactive prompts so a missing key fails
-// fast rather than waiting on stdin.
-func applySSHEnv(cmd *exec.Cmd, opts AuthOpts) {
-	if opts.Type != "ssh" || opts.SSHKeyPath == "" {
-		return
-	}
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf(
-			"GIT_SSH_COMMAND=ssh -i %s"+
-				" -o StrictHostKeyChecking=no"+
-				" -o UserKnownHostsFile=/dev/null"+
-				" -o BatchMode=yes"+
-				" -o ConnectTimeout=10"+
-				" -o ServerAliveInterval=10"+
-				" -o ServerAliveCountMax=3",
-			opts.SSHKeyPath,
-		),
+// ssh is spawned by git it survived the historical SIGKILL-the-direct-child
+// cancellation, leaking PIDs until the per-user nproc limit was hit. BatchMode
+// disables interactive prompts so a missing key fails fast.
+func sshCommandEnv(keyPath string) string {
+	kh := knownHostsFile()
+	return fmt.Sprintf(
+		"GIT_SSH_COMMAND=ssh -i %s"+
+			" -o StrictHostKeyChecking=accept-new"+
+			" -o UserKnownHostsFile=%s"+
+			" -o BatchMode=yes"+
+			" -o ConnectTimeout=10"+
+			" -o ServerAliveInterval=10"+
+			" -o ServerAliveCountMax=3",
+		keyPath, kh,
 	)
+}
+
+// knownHostsFile returns the path to the managed known_hosts file, creating its
+// parent directory (0700) if needed. Override the directory with SSH_KNOWN_HOSTS_DIR.
+func knownHostsFile() string {
+	dir := os.Getenv("SSH_KNOWN_HOSTS_DIR")
+	if dir == "" {
+		dir = "/tmp/stackd-ssh"
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		slog.Warn("could not create ssh known_hosts dir", "dir", dir, "err", err)
+	}
+	return filepath.Join(dir, "known_hosts")
 }

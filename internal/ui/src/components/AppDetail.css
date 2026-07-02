@@ -98,7 +98,7 @@
   outline-offset: 2px;
 }
 
-/* Sync button in detail header — only shown on mobile where AppGrid is hidden */
+/* Sync button in detail header — only shown on mobile where the cards view is hidden */
 .detail-sync-btn {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
@@ -834,7 +834,7 @@
     display: none;
   }
 
-  /* Show sync btn on mobile — AppGrid is hidden behind the overlay */
+  /* Show sync btn on mobile — the cards view is hidden behind the overlay */
   .detail-sync-btn {
     display: flex;
   }

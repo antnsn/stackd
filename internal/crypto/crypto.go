@@ -13,6 +13,12 @@ import (
 )
 
 // DeriveKey derives a 32-byte AES key from the given secret using HKDF-SHA256.
+//
+// HKDF is a key-derivation function, not a password hash: it performs no
+// deliberate work-factor stretching, so the caller MUST supply a high-entropy
+// SECRET_KEY (a random string, not a human-chosen password). main enforces a
+// minimum length. The salt/info are fixed ("stackd-v1") so the derivation is
+// stable across restarts — changing it would invalidate all existing ciphertext.
 func DeriveKey(secret string) ([]byte, error) {
 	r := hkdf.New(sha256.New, []byte(secret), nil, []byte("stackd-v1"))
 	key := make([]byte, 32)
