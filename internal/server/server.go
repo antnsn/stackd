@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,33 +31,35 @@ import (
 
 // Server is the dashboard HTTP server.
 type Server struct {
-	store        *state.Store
-	docker       *docker.Client // may be nil if Docker is unavailable
-	syncTrigger  chan<- string
-	addr         string
-	mux          *http.ServeMux
-	handler      http.Handler // final handler with all middlewares applied
-	syncLimiter  *rateLimiter
-	db           *sql.DB
-	cryptoKey    []byte
-	activity     *state.ActivityBus
-	applyStack   func(repo, stack string) // called by per-stack apply endpoint
-	tokenMu      sync.RWMutex
-	tokenVal     string
-	startTime    time.Time
-	version      string
-	cloneDir     string
-	dbPath       string
+	store       *state.Store
+	docker      *docker.ClientHolder // holds the current client; may return nil
+	syncTrigger chan<- string
+	addr        string
+	mux         *http.ServeMux
+	handler     http.Handler // final handler with all middlewares applied
+	syncLimiter *rateLimiter
+	db          *sql.DB
+	cryptoKey   []byte
+	activity    *state.ActivityBus
+	applyStack  func(repo, stack string) // called by per-stack apply endpoint
+	tokenMu     sync.RWMutex
+	tokenVal    string
+	startTime   time.Time
+	version     string
+	cloneDir    string
+	dbPath      string
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
-// dockerClient may be nil; log endpoints will return 503 in that case.
-func New(store *state.Store, dockerClient *docker.Client, syncTrigger chan<- string, port int, sqlDB *sql.DB, cryptoKey []byte, activity *state.ActivityBus) *Server {
+// dockerHolder holds the current Docker client (which may be nil); reconnects
+// made through it become visible to handlers immediately. bindAddr is the
+// listen host (e.g. "127.0.0.1"); log endpoints return 503 when no client.
+func New(store *state.Store, dockerHolder *docker.ClientHolder, syncTrigger chan<- string, bindAddr string, port int, sqlDB *sql.DB, cryptoKey []byte, activity *state.ActivityBus) *Server {
 	s := &Server{
 		store:       store,
-		docker:      dockerClient,
+		docker:      dockerHolder,
 		syncTrigger: syncTrigger,
-		addr:        fmt.Sprintf(":%d", port),
+		addr:        net.JoinHostPort(bindAddr, strconv.Itoa(port)),
 		mux:         http.NewServeMux(),
 		db:          sqlDB,
 		cryptoKey:   cryptoKey,
@@ -175,8 +180,11 @@ func (s *Server) registerRoutes() {
 
 	// GET /readyz — readiness probe
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		dockerOK := s.docker != nil
-		synced := false
+		dockerOK := s.dockerClient() != nil
+		// A fresh install with no repos configured is "ready" once Docker is up —
+		// there is simply nothing to sync yet. Otherwise require at least one
+		// applied stack.
+		synced := len(s.store.GetAllRepos()) == 0
 		for _, st := range s.store.GetAllStacks() {
 			if !st.LastApply.IsZero() {
 				synced = true
@@ -220,13 +228,13 @@ func (s *Server) registerRoutes() {
 // repoView is the per-repo shape returned by /api/status.
 // Stacks are nested inside their repo so the frontend can render them directly.
 type repoView struct {
-	Name      string             `json:"name"`
-	LastSync  time.Time          `json:"lastSync"`
-	LastSHA   string             `json:"lastSha"`
-	Status    state.SyncStatus   `json:"status"`
-	LastError string             `json:"lastError,omitempty"`
+	Name      string               `json:"name"`
+	LastSync  time.Time            `json:"lastSync"`
+	LastSHA   string               `json:"lastSha"`
+	Status    state.SyncStatus     `json:"status"`
+	LastError string               `json:"lastError,omitempty"`
 	Infisical state.InfisicalState `json:"infisical"`
-	Stacks    []state.StackState `json:"stacks"`
+	Stacks    []state.StackState   `json:"stacks"`
 }
 
 // handleStatus returns the full state as JSON with stacks nested inside repos.
@@ -258,7 +266,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := struct {
-		Repos     []repoView          `json:"repos"`
+		Repos     []repoView           `json:"repos"`
 		Infisical state.InfisicalState `json:"infisical"`
 	}{
 		Repos:     repos,
@@ -345,7 +353,8 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.docker == nil {
+	dockerCli := s.dockerClient()
+	if dockerCli == nil {
 		http.Error(w, "Docker client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -367,7 +376,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	if err := s.docker.StreamLogs(ctx, containerName, sw); err != nil {
+	if err := dockerCli.StreamLogs(ctx, containerName, sw); err != nil {
 		fmt.Fprintf(sw, "error: %v", err)
 	}
 }
@@ -375,7 +384,8 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 // handleContainerAction dispatches start/stop/restart for a single container.
 func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, action string) {
 	w.Header().Set("Content-Type", "application/json")
-	if s.docker == nil {
+	dockerCli := s.dockerClient()
+	if dockerCli == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]string{"error": "docker unavailable"})
 		return
@@ -387,11 +397,11 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, a
 	var err error
 	switch action {
 	case "start":
-		err = s.docker.StartContainer(ctx, name)
+		err = dockerCli.StartContainer(ctx, name)
 	case "stop":
-		err = s.docker.StopContainer(ctx, name)
+		err = dockerCli.StopContainer(ctx, name)
 	case "restart":
-		err = s.docker.RestartContainer(ctx, name)
+		err = dockerCli.RestartContainer(ctx, name)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "unknown action"})
@@ -412,10 +422,14 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, a
 // refreshContainerState re-fetches container details for every stack containing
 // the named container and updates the store.
 func (s *Server) refreshContainerState(containerName string) {
+	dockerCli := s.dockerClient()
+	if dockerCli == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	for _, st := range s.store.GetAllStacks() {
-		dockerDetails, err := s.docker.ListStackContainerDetails(ctx, st.StackDir)
+		dockerDetails, err := dockerCli.ListStackContainerDetails(ctx, st.StackDir)
 		if err != nil {
 			continue
 		}
@@ -445,16 +459,23 @@ func (s *Server) refreshContainerState(containerName string) {
 	}
 }
 
+// ctEq reports whether a and b are equal using a constant-time comparison, so
+// token validation does not leak length/content via timing.
+func ctEq(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // authMiddleware protects API endpoints with bearer token authentication.
 // getToken is called on each request so token changes take effect immediately.
-// If getToken returns "", all requests pass through (auth disabled).
+//
+// The token is accepted via either the "Authorization: Bearer <token>" header
+// (used by fetch) or a "?token=<token>" query param. The query form is required
+// because EventSource (SSE) and the browser WebSocket API cannot set request
+// headers; it is honoured for any /api/ request. If getToken returns "" the
+// server is misconfigured (auth is meant to be always-on) and all API requests
+// are rejected fail-closed.
 func authMiddleware(getToken func() string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := getToken()
-		if token == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
 		// Always allow: health probes, metrics, static assets, dashboard HTML
 		path := r.URL.Path
 		if path == "/healthz" || path == "/readyz" || path == "/metrics" ||
@@ -463,12 +484,22 @@ func authMiddleware(getToken func() string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Validate Bearer token — also accept ?token= query param for WebSocket
-		// upgrades (browser WebSocket API cannot send Authorization headers)
-		auth := r.Header.Get("Authorization")
-		expected := "Bearer " + token
-		isWS := strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
-		if auth != expected && !(isWS && r.URL.Query().Get("token") == token) {
+
+		token := getToken()
+		if token == "" {
+			// Fail closed: without a configured token no API access is granted.
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Accept the token from the Authorization header (fetch) or ?token=
+		// query param (EventSource / WebSocket, which cannot set headers).
+		var provided string
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			provided = strings.TrimPrefix(auth, "Bearer ")
+		}
+		queryToken := r.URL.Query().Get("token")
+		if !ctEq(provided, token) && !(queryToken != "" && ctEq(queryToken, token)) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="stackd"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -533,6 +564,12 @@ func (s *sseWriter) Write(p []byte) (int, error) {
 }
 
 // ── Activity SSE ──────────────────────────────────────────────────────────────
+
+// dockerClient returns the current Docker client (or nil if unavailable),
+// reflecting any reconnect performed by the sync loop.
+func (s *Server) dockerClient() *docker.Client {
+	return s.docker.Get()
+}
 
 func (s *Server) getToken() string {
 	s.tokenMu.RLock()
@@ -626,7 +663,31 @@ func (s *Server) handleApplyStack(w http.ResponseWriter, r *http.Request) {
 // ── WebSocket exec ────────────────────────────────────────────────────────────
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true }, // auth handled by middleware
+	CheckOrigin: checkOrigin,
+}
+
+// checkOrigin guards WebSocket upgrades against cross-site hijacking. Requests
+// with no Origin header (non-browser clients such as CLIs) are allowed. When an
+// Origin is present it must appear in ALLOWED_ORIGINS (comma-separated, checked
+// first) or its host must match the request Host; otherwise the upgrade is
+// rejected (403).
+func checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if allowed := os.Getenv("ALLOWED_ORIGINS"); allowed != "" {
+		for _, a := range strings.Split(allowed, ",") {
+			if strings.EqualFold(strings.TrimSpace(a), origin) {
+				return true
+			}
+		}
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 // execResizeMsg is sent by the frontend to resize the PTY.
@@ -639,7 +700,8 @@ type execResizeMsg struct {
 // handleExec upgrades to WebSocket and bridges a docker exec PTY session.
 // GET /api/exec/{container}
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
-	if s.docker == nil {
+	dockerCli := s.dockerClient()
+	if dockerCli == nil {
 		http.Error(w, "docker unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -660,7 +722,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 	defer cancel()
 
-	exec, err := s.docker.ExecInteractive(ctx, containerID)
+	exec, err := dockerCli.ExecInteractive(ctx, containerID)
 	if err != nil {
 		slog.Warn("exec create failed", "container", containerID, "err", err)
 		_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\nfailed to start shell: "+err.Error()+"\r\n"))
@@ -701,7 +763,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 			var resize execResizeMsg
 			if len(data) > 0 && data[0] == '{' {
 				if jerr := json.Unmarshal(data, &resize); jerr == nil && resize.Type == "resize" {
-					_ = s.docker.ExecResize(ctx, exec.ExecID, resize.Rows, resize.Cols)
+					_ = dockerCli.ExecResize(ctx, exec.ExecID, resize.Rows, resize.Cols)
 					continue
 				}
 			}

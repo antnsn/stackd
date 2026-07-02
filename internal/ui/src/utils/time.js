@@ -2,6 +2,7 @@ export function formatRelative(dateStr) {
   if (!dateStr) return ''
   const diff = Date.now() - new Date(dateStr).getTime()
   const s = Math.floor(diff / 1000)
+  if (s < 0) return 'just now'   // clock skew — never render a negative age
   if (s < 60) return `${s}s ago`
   const m = Math.floor(s / 60)
   if (m < 60) return `${m}m ago`

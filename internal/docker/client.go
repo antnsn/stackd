@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,8 +95,7 @@ func (c *Client) StreamLogs(ctx context.Context, name string, w io.Writer) error
 // ListStackContainerDetails returns runtime details for all containers belonging
 // to the compose project whose directory is stackDir.
 func (c *Client) ListStackContainerDetails(ctx context.Context, stackDir string) ([]ContainerDetail, error) {
-	parts := strings.Split(strings.TrimRight(stackDir, "/"), "/")
-	projectName := strings.ToLower(parts[len(parts)-1])
+	projectName := composeProjectName(stackDir)
 
 	result, err := c.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
@@ -142,24 +142,52 @@ func (c *Client) ListStackContainerDetails(ctx context.Context, stackDir string)
 	return details, nil
 }
 
+// composeProjectName derives the docker-compose project name from a stack
+// directory. Compose lowercases the base directory name and strips any
+// character outside [a-z0-9_-]; we mirror that so the label filter matches the
+// project label compose actually assigns.
+func composeProjectName(stackDir string) string {
+	parts := strings.Split(strings.TrimRight(stackDir, "/"), "/")
+	base := strings.ToLower(parts[len(parts)-1])
+	return composeNameStrip.ReplaceAllString(base, "")
+}
+
+var composeNameStrip = regexp.MustCompile(`[^a-z0-9_-]`)
+
+// sensitiveEnvKeys are substrings that, when present in an env var name, cause
+// its value to be masked.
+var sensitiveEnvKeys = []string{
+	"TOKEN", "SECRET", "KEY", "PASSWORD", "PASS", "CREDENTIAL",
+	"DATABASE_URL", "DB_URL", "DSN", "REDIS_URL",
+}
+
+// userinfoURLRe matches a URL value carrying inline credentials
+// (scheme://user:pass@host), which must be masked regardless of the key name.
+var userinfoURLRe = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s/@]+:[^\s/@]*@`)
+
 func maskEnvVars(envs []string) []string {
-	sensitive := []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "PASS", "CREDENTIAL"}
 	result := make([]string, 0, len(envs))
 	for _, e := range envs {
 		eq := strings.Index(e, "=")
-		if eq >= 0 {
-			upper := strings.ToUpper(e[:eq])
-			masked := false
-			for _, s := range sensitive {
-				if strings.Contains(upper, s) {
-					result = append(result, e[:eq]+"=[redacted]")
-					masked = true
-					break
-				}
+		if eq < 0 {
+			result = append(result, e)
+			continue
+		}
+		key := e[:eq]
+		val := e[eq+1:]
+		upper := strings.ToUpper(key)
+		masked := false
+		for _, s := range sensitiveEnvKeys {
+			if strings.Contains(upper, s) {
+				masked = true
+				break
 			}
-			if !masked {
-				result = append(result, e)
-			}
+		}
+		if !masked && userinfoURLRe.MatchString(val) {
+			masked = true
+		}
+		if masked {
+			result = append(result, key+"=[redacted]")
 		} else {
 			result = append(result, e)
 		}
@@ -240,7 +268,7 @@ func (c *Client) ExecInteractive(ctx context.Context, containerID string) (*Exec
 
 // detectShell probes candidate shells in order and returns the first available.
 func (c *Client) detectShell(ctx context.Context, containerID string) (string, error) {
-	candidates := []string{"/bin/bash", "/bin/sh", "/ash", "/busybox/sh"}
+	candidates := []string{"/bin/bash", "/bin/sh", "/bin/ash", "/ash", "/busybox/sh"}
 	for _, shell := range candidates {
 		probe, err := c.cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 			Cmd: []string{shell, "-c", "exit 0"},
@@ -271,8 +299,7 @@ func (c *Client) ExecResize(ctx context.Context, execID string, height, width ui
 
 // ListStackContainers returns container names for the compose project at stackDir.
 func (c *Client) ListStackContainers(ctx context.Context, stackDir string) ([]string, error) {
-	parts := strings.Split(strings.TrimRight(stackDir, "/"), "/")
-	projectName := strings.ToLower(parts[len(parts)-1])
+	projectName := composeProjectName(stackDir)
 
 	result, err := c.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,

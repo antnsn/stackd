@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'preact/hooks'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'preact/hooks'
 import { AppDetail } from './components/AppDetail'
 import { RepoCardsView, ActivityFeed } from './components/RepoCardsView'
 import { Settings } from './components/Settings'
+import { LoginGate } from './components/LoginGate'
+import { apiFetch, subscribe, needsLogin } from './utils/auth.js'
 import { formatRelative } from './utils/time.js'
 import './app.css'
 
@@ -19,26 +21,53 @@ export function App() {
   const [lastFetched, setLastFetched] = useState(null)
   const [now, setNow] = useState(Date.now())
   const [loading, setLoading] = useState(true)
+  const [authNeeded, setAuthNeeded] = useState(needsLogin())
+
+  // Tracked timers so they can be cleared on unmount (avoids setState-after-unmount).
+  const timeoutsRef = useRef(new Set())
+  const later = useCallback((fn, ms) => {
+    const id = setTimeout(() => { timeoutsRef.current.delete(id); fn() }, ms)
+    timeoutsRef.current.add(id)
+    return id
+  }, [])
+  useEffect(() => () => {
+    timeoutsRef.current.forEach(clearTimeout)
+    timeoutsRef.current.clear()
+  }, [])
+
+  // Re-render + gate the app whenever auth state changes (login, logout, 401).
+  useEffect(() => subscribe(() => setAuthNeeded(needsLogin())), [])
 
   const fetchStatus = useCallback(async () => {
-    fetch('/api/status')
-      .then(r => r.json())
-      .then(data => {
-        setRepos(data.repos || [])
-        setInfisical(data.infisical)
-        setError(null)
-        setLastFetched(Date.now())
+    // Don't hammer the API with requests we know will 401 — the gate is showing.
+    if (needsLogin()) { setLoading(false); return }
+    try {
+      const res = await apiFetch('/api/status')
+      // apiFetch already cleared the token and raised the gate on 401.
+      if (res.status === 401) { setLoading(false); return }
+      if (!res.ok) {
+        setError(`Server error (${res.status})`)
         setLoading(false)
-        const errorCount = (data.repos || [])
-          .flatMap(r => r.stacks || [])
-          .filter(s => {
-            if (s.status === 'error') return true
-            const containers = s.containers || []
-            return containers.length > 0 && !containers.every(c => c.status === 'running')
-          }).length
-        document.title = errorCount > 0 ? `(${errorCount}) stackd` : 'stackd'
-      })
-      .catch(err => { setError(err.message); setLoading(false) })
+        return
+      }
+      const data = await res.json()
+      setRepos(data.repos || [])
+      setInfisical(data.infisical)
+      setError(null)
+      setLastFetched(Date.now())
+      setLoading(false)
+      const errorCount = (data.repos || [])
+        .flatMap(r => r.stacks || [])
+        .filter(s => {
+          if (s.status === 'error') return true
+          const containers = s.containers || []
+          return containers.length > 0 && !containers.every(c => c.status === 'running')
+        }).length
+      document.title = errorCount > 0 ? `(${errorCount}) stackd` : 'stackd'
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -60,6 +89,11 @@ export function App() {
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])
+
+  // Re-fetch immediately once the user authenticates (token entered).
+  useEffect(() => {
+    if (!authNeeded) fetchStatus()
+  }, [authNeeded])
 
   // Tick every 10s to keep freshness label live between polls
   useEffect(() => {
@@ -94,44 +128,84 @@ export function App() {
     })
   }
 
+  const clearSyncStatusLater = (repoName, ms) =>
+    later(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), ms)
+
   const handleForceSync = (repoName) => {
     setSyncingRepos(prev => new Set([...prev, repoName]))
-    fetch(`/api/sync/${repoName}`, { method: 'POST' })
+    apiFetch(`/api/sync/${repoName}`, { method: 'POST' })
       .then(res => {
         clearSyncing(repoName)
         if (res.status === 429) {
           setSyncStatus(prev => ({ ...prev, [repoName]: { state: 'rateLimit', message: 'Rate limited — wait a moment' } }))
-          setTimeout(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), 5000)
+          clearSyncStatusLater(repoName, 5000)
         } else if (res.ok) {
           setSyncStatus(prev => ({ ...prev, [repoName]: { state: 'success', message: 'Synced ✓' } }))
-          setTimeout(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), 2000)
+          clearSyncStatusLater(repoName, 2000)
         } else {
           setSyncStatus(prev => ({ ...prev, [repoName]: { state: 'error', message: `Sync failed (${res.status})` } }))
-          setTimeout(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), 4000)
+          clearSyncStatusLater(repoName, 4000)
         }
       })
       .catch(err => {
         clearSyncing(repoName)
         setSyncStatus(prev => ({ ...prev, [repoName]: { state: 'error', message: err.message } }))
-        setTimeout(() => setSyncStatus(prev => { const n = { ...prev }; delete n[repoName]; return n }), 4000)
+        clearSyncStatusLater(repoName, 4000)
       })
   }
+
+  // Apply-spinner bookkeeping. The spinner is primarily cleared by status
+  // polling (below): once the backend reports the stack has left the "applying"
+  // state we drop the spinner. applyFallbackRef holds a long safety timeout that
+  // matches the backend's 300s apply budget, so a spinner can never get stuck if
+  // the stack disappears from status before completing.
+  const applyFallbackRef = useRef({})   // key -> timeout id
+  const applyStartRef = useRef({})      // key -> Date.now()
+
+  const clearApplying = useCallback((key) => {
+    setApplyingStacks(prev => { const n = new Set(prev); n.delete(key); return n })
+    const t = applyFallbackRef.current[key]
+    if (t) { clearTimeout(t); delete applyFallbackRef.current[key] }
+    delete applyStartRef.current[key]
+  }, [])
+
+  useEffect(() => () => {
+    Object.values(applyFallbackRef.current).forEach(clearTimeout)
+  }, [])
 
   const handleApplyStack = useCallback((repoName, stackName) => {
     const key = `${repoName}/${stackName}`
     setApplyingStacks(prev => new Set([...prev, key]))
-    fetch(`/api/stacks/${repoName}/${stackName}/apply`, { method: 'POST' })
-      .then(() => {
-        // Activity feed shows progress; clear spinner after a reasonable delay
-        setTimeout(() => {
-          setApplyingStacks(prev => { const n = new Set(prev); n.delete(key); return n })
-          fetchStatus()
-        }, 8000)
+    applyStartRef.current[key] = Date.now()
+    apiFetch(`/api/stacks/${repoName}/${stackName}/apply`, { method: 'POST' })
+      .then(res => {
+        if (!res.ok) { clearApplying(key); return }
+        fetchStatus()
       })
-      .catch(() => {
-        setApplyingStacks(prev => { const n = new Set(prev); n.delete(key); return n })
-      })
-  }, [fetchStatus])
+      .catch(() => clearApplying(key))
+    // Safety net matching the backend's 300s apply budget in case polling never
+    // reports completion (e.g. the stack is removed mid-apply).
+    clearTimeout(applyFallbackRef.current[key])
+    applyFallbackRef.current[key] = setTimeout(() => clearApplying(key), 300000)
+  }, [fetchStatus, clearApplying])
+
+  // Drive the apply spinner off status polling: clear it once the stack is no
+  // longer "applying". Guard with a minimum elapsed time (> one poll cycle) so
+  // we don't clear before the backend has flipped the stack into "applying".
+  useEffect(() => {
+    if (applyingStacks.size === 0) return
+    applyingStacks.forEach(key => {
+      const slash = key.indexOf('/')
+      const repoName = key.slice(0, slash)
+      const stackName = key.slice(slash + 1)
+      const repo = repos.find(r => r.name === repoName)
+      const stack = (repo?.stacks || []).find(s => s.name === stackName)
+      const elapsed = Date.now() - (applyStartRef.current[key] || 0)
+      if (stack && stack.status !== 'applying' && elapsed > 6000) {
+        clearApplying(key)
+      }
+    })
+  }, [repos])
 
   // Derive stacks with problems for the health banner
   const problemStacks = useMemo(() => {
@@ -155,6 +229,10 @@ export function App() {
     : null
 
   const currentRepo = repos.find(r => r.name === selectedRepo) || null
+
+  if (authNeeded) {
+    return <LoginGate />
+  }
 
   return (
     <div class="app-shell">
@@ -268,9 +346,16 @@ export function App() {
               isSyncing={syncingRepos.has(currentRepo.name)}
               onSync={handleForceSync}
               syncStatus={syncStatus[currentRepo.name]}
-              onApplyStack={handleApplyStack}
-              applyingStacks={applyingStacks}
             />
+          ) : error ? (
+            <div class="empty-detail">
+              <div class="empty-detail__icon" aria-hidden="true">⚠</div>
+              <p class="empty-detail__title">Could not load stacks</p>
+              <p class="empty-detail__hint">{error}</p>
+              <button class="empty-detail__action" onClick={fetchStatus}>
+                Retry
+              </button>
+            </div>
           ) : (
             <div class="empty-detail">
               <div class="empty-detail__icon" aria-hidden="true">⬡</div>

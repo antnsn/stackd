@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'preact/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative } from '../utils/time.js'
+import { withToken } from '../utils/auth.js'
 import './RepoCardsView.css'
 
 const KNOWN_REGISTRIES = [
@@ -260,6 +261,16 @@ export function ActivityFeed() {
     () => localStorage.getItem('activity-show-pulls') === 'true'
   )
   const fadeTimer = useRef(null)
+  const timersRef = useRef(new Set())
+
+  // Clear any pending fade/auto-remove timers on unmount.
+  useEffect(() => () => {
+    clearTimeout(fadeTimer.current)
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current.clear()
+  }, [])
+
+  const track = (id) => { timersRef.current.add(id); return id }
 
   const togglePulls = () => {
     setShowPulls(v => {
@@ -274,14 +285,14 @@ export function ActivityFeed() {
     if (visible && events.length === 0) {
       fadeTimer.current = setTimeout(() => {
         setFading(true)
-        setTimeout(() => { setFading(false); setVisible(false) }, 400)
+        track(setTimeout(() => { setFading(false); setVisible(false) }, 400))
       }, 800)
     }
     return () => clearTimeout(fadeTimer.current)
   }, [events, visible])
 
   useEffect(() => {
-    const es = new EventSource('/api/activity')
+    const es = new EventSource(withToken('/api/activity'))
     es.onmessage = e => {
       try {
         const ev = JSON.parse(e.data)
@@ -312,9 +323,9 @@ export function ActivityFeed() {
         if (isResolution) {
           const delay = localStorage.getItem('activity-dismiss-delay') || '4000'
           if (delay !== 'never') {
-            setTimeout(() => {
+            track(setTimeout(() => {
               setEvents(prev => prev.filter(p => p.id !== id))
-            }, parseInt(delay, 10))
+            }, parseInt(delay, 10)))
           }
         }
       } catch {}

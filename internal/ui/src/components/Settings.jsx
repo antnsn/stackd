@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
+import { apiFetch, clearToken } from '../utils/auth.js'
 import './Settings.css'
 
 // ---- Repos tab -----------------------------------------------------------
@@ -31,7 +32,7 @@ function RepoForm({ repo, sshKeys, onClose, onSaved }) {
 
     const url = isEdit ? `/api/settings/repos/${repo.id}` : '/api/settings/repos'
     try {
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -119,7 +120,7 @@ function ReposTab({ sshKeys }) {
 
   const loadRepos = () => {
     setLoading(true)
-    fetch('/api/settings/repos')
+    apiFetch('/api/settings/repos')
       .then(r => r.json())
       .then(data => { setRepos(data); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })
@@ -128,7 +129,7 @@ function ReposTab({ sshKeys }) {
   useEffect(loadRepos, [])
 
   const deleteRepo = async (id) => {
-    await fetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
     setDeleteConfirm(null)
     loadRepos()
   }
@@ -231,8 +232,8 @@ function SSHKeysTab({ onKeysChange }) {
   const loadKeys = () => {
     setLoading(true)
     Promise.all([
-      fetch('/api/settings/ssh-keys').then(r => r.json()),
-      fetch('/api/settings/repos').then(r => r.json()),
+      apiFetch('/api/settings/ssh-keys').then(r => r.json()),
+      apiFetch('/api/settings/repos').then(r => r.json()),
     ])
       .then(([keyData, repoData]) => {
         setKeys(keyData || [])
@@ -249,7 +250,7 @@ function SSHKeysTab({ onKeysChange }) {
     if (!form.name || !form.privateKey) { setError('Name and private key are required'); return }
     setSaving(true); setError(null); setSuccess(null)
     try {
-      const res = await fetch('/api/settings/ssh-keys', {
+      const res = await apiFetch('/api/settings/ssh-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -265,7 +266,7 @@ function SSHKeysTab({ onKeysChange }) {
   }
 
   const deleteKey = async (id) => {
-    await fetch(`/api/settings/ssh-keys/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/settings/ssh-keys/${id}`, { method: 'DELETE' })
     setDeleteConfirm(null)
     loadKeys()
   }
@@ -358,7 +359,7 @@ function InfisicalTab() {
   const [success, setSuccess] = useState(null)
 
   const load = () =>
-    fetch('/api/settings/general')
+    apiFetch('/api/settings/general')
       .then(r => r.json())
       .then(data => {
         setMeta(data)
@@ -384,7 +385,7 @@ function InfisicalTab() {
     }
     if (form.infisicalToken) body.infisicalToken = form.infisicalToken
     try {
-      const res = await fetch('/api/settings/general', {
+      const res = await apiFetch('/api/settings/general', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -466,7 +467,7 @@ function GeneralTab() {
   const [sysInfo, setSysInfo] = useState(null)
 
   const load = () =>
-    fetch('/api/settings/general')
+    apiFetch('/api/settings/general')
       .then(r => r.json())
       .then(data => {
         setMeta(data)
@@ -476,7 +477,7 @@ function GeneralTab() {
 
   useEffect(() => {
     load()
-    fetch('/api/settings/system')
+    apiFetch('/api/settings/system')
       .then(r => r.json())
       .then(setSysInfo)
       .catch(() => {})
@@ -500,7 +501,7 @@ function GeneralTab() {
     const body = { defaultSyncInterval: Number(form.defaultSyncInterval) }
     if (form.dashboardToken) body.dashboardToken = form.dashboardToken
     try {
-      const res = await fetch('/api/settings/general', {
+      const res = await apiFetch('/api/settings/general', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -552,6 +553,9 @@ function GeneralTab() {
         <div class="form-actions">
           <button class="btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save settings'}
+          </button>
+          <button class="btn-ghost" onClick={clearToken} title="Clear the stored token and return to the login screen">
+            Log out
           </button>
         </div>
       </div>
@@ -616,7 +620,7 @@ export function Settings() {
 
   // Load SSH keys upfront so the repo modal has them regardless of active tab.
   useEffect(() => {
-    fetch('/api/settings/ssh-keys')
+    apiFetch('/api/settings/ssh-keys')
       .then(r => r.json())
       .then(data => setSSHKeys(data || []))
       .catch(() => {})
