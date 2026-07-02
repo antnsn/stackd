@@ -33,3 +33,14 @@ func (h *ClientHolder) Set(c *Client) {
 	}
 	h.p.Store(c)
 }
+
+// CompareAndSwap atomically publishes new when the current client is still old,
+// returning true on success. It lets a reconnecting caller detect that another
+// goroutine already installed a client so the loser can Close its own instead of
+// leaking it. Reports false on a nil holder.
+func (h *ClientHolder) CompareAndSwap(old, new *Client) bool {
+	if h == nil {
+		return false
+	}
+	return h.p.CompareAndSwap(old, new)
+}

@@ -761,12 +761,20 @@ function TerminalPanel({ containerID }) {
       wsRef.current = ws
       localWs = ws
 
+      // All handlers below fire asynchronously and touch the xterm `term`.
+      // After unmount/reconnect the cleanup sets `cancelled = true` and disposes
+      // the terminal; a late ws.onclose/onerror/onmessage or observer callback
+      // must NOT write to a disposed terminal (xterm throws). Guard every one.
+      const alive = () => !cancelled && termRef.current === term && containerRef.current
+
       ws.onopen = () => {
+        if (!alive()) return
         setConnected(true)
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
       }
 
       ws.onmessage = e => {
+        if (!alive()) return
         if (e.data instanceof ArrayBuffer) {
           term.write(new Uint8Array(e.data))
         } else {
@@ -775,16 +783,22 @@ function TerminalPanel({ containerID }) {
       }
 
       ws.onclose = () => {
+        if (!alive()) return
         setConnected(false)
         term.write('\r\n\x1b[90m[session closed]\x1b[0m\r\n')
       }
-      ws.onerror = () => term.write('\r\n\x1b[31m[connection error]\x1b[0m\r\n')
+      ws.onerror = () => {
+        if (!alive()) return
+        term.write('\r\n\x1b[31m[connection error]\x1b[0m\r\n')
+      }
 
       dataDispose = term.onData(data => {
+        if (!alive()) return
         if (ws.readyState === WebSocket.OPEN) ws.send(data)
       })
 
       ro = new ResizeObserver(() => {
+        if (!alive()) return
         fitRef.current?.fit()
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))

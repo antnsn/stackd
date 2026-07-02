@@ -66,7 +66,6 @@ func TestScheduling(t *testing.T) {
 	if dueForSync(repo) {
 		t.Fatal("repo scheduled an hour out should not be due")
 	}
-	markScheduled(repo, -time.Second) // already elapsed but clamped to 60s min... use past via direct store
 	repoNextDue.Store(repo, time.Now().Add(-time.Second))
 	if !dueForSync(repo) {
 		t.Fatal("repo whose next-due is in the past should be due")

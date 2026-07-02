@@ -574,3 +574,17 @@
   font-family: var(--font-mono);
   flex-shrink: 0;
 }
+
+.activity-feed__reconnect {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: 3px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.activity-feed__reconnect:hover { color: var(--text-primary); border-color: var(--text-muted); }

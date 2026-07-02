@@ -20,9 +20,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"stackd/internal/compose"
 	"stackd/internal/docker"
 	"stackd/internal/metrics"
 	"stackd/internal/state"
@@ -42,6 +44,8 @@ type Server struct {
 	cryptoKey   []byte
 	activity    *state.ActivityBus
 	applyStack  func(repo, stack string) // called by per-stack apply endpoint
+	applyMu     sync.Mutex
+	applying    map[string]bool // in-flight applies keyed by "repo/stack"
 	tokenMu     sync.RWMutex
 	tokenVal    string
 	startTime   time.Time
@@ -64,6 +68,7 @@ func New(store *state.Store, dockerHolder *docker.ClientHolder, syncTrigger chan
 		db:          sqlDB,
 		cryptoKey:   cryptoKey,
 		activity:    activity,
+		applying:    make(map[string]bool),
 	}
 	s.registerRoutes()
 
@@ -327,22 +332,38 @@ func (s *Server) handleComposeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try docker-compose.yml then docker-compose.yaml
+	// Use the shared discovery order so the file shown here is the same one that
+	// gets applied. Open with O_NOFOLLOW so a hostile repo cannot symlink the
+	// compose file to an arbitrary path (e.g. /etc/passwd) and have us serve it.
 	var content []byte
-	var readErr error
-	for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
-		content, readErr = os.ReadFile(filepath.Join(stackDir, name))
-		if readErr == nil {
+	var found bool
+	for _, name := range compose.Candidates {
+		data, err := readNoFollow(filepath.Join(stackDir, name))
+		if err == nil {
+			content = data
+			found = true
 			break
 		}
 	}
-	if readErr != nil {
+	if !found {
 		http.Error(w, "compose file not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(content)
+}
+
+// readNoFollow reads a regular file, refusing to follow a symlink at the final
+// path component (O_NOFOLLOW). This prevents a compose file that is actually a
+// symlink to a sensitive host file from being read and served.
+func readNoFollow(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
 }
 
 // handleLogs streams container logs as Server-Sent Events.
@@ -655,7 +676,30 @@ func (s *Server) handleApplyStack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "apply not configured", http.StatusServiceUnavailable)
 		return
 	}
-	go s.applyStack(repo, stack)
+
+	// Deduplicate concurrent applies for the same stack. The compose run happens
+	// outside the per-repo lock, so without this a burst of clicks would race
+	// `docker compose up` in the same directory and pile goroutines on the lock.
+	key := repo + "/" + stack
+	s.applyMu.Lock()
+	if s.applying[key] {
+		s.applyMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"status": "already_applying", "repo": repo, "stack": stack})
+		return
+	}
+	s.applying[key] = true
+	s.applyMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.applyMu.Lock()
+			delete(s.applying, key)
+			s.applyMu.Unlock()
+		}()
+		s.applyStack(repo, stack)
+	}()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "applying"})
 }
@@ -731,6 +775,14 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	defer exec.Close()
 
 	slog.Info("exec session started", "container", containerID, "execID", exec.ExecID)
+
+	// Bind the session lifetime to ctx: when the 30-minute cap elapses or the
+	// request is cancelled, close the exec connection so the blocked read/write
+	// loops unblock and the docker exec session is torn down promptly.
+	go func() {
+		<-ctx.Done()
+		_ = exec.Conn.Close()
+	}()
 
 	// Docker PTY → WebSocket
 	go func() {
