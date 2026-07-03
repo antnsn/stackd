@@ -7,6 +7,9 @@ import './HostsSettings.css'
 // dockerHost === "" means the local Docker socket. Users add REMOTE hosts here
 // so dockerHost is normally an ssh:// URL; an SSH key is required when remote.
 
+const DEFAULT_REMOTE_SOCKET = '/var/run/docker.sock'
+const DEFAULT_DOCKER_PATH = 'docker'
+
 function HostForm({ host, sshKeys, onClose, onSaved }) {
   const isEdit = !!host
   const [form, setForm] = useState({
@@ -14,9 +17,17 @@ function HostForm({ host, sshKeys, onClose, onSaved }) {
     dockerHost: host?.dockerHost || '',
     sshKeyId: host?.sshKeyId || '',
     enabled: host?.enabled !== false,
+    transport: host?.transport || 'forward',
+    remoteSocket: host?.remoteSocket || DEFAULT_REMOTE_SOCKET,
+    dockerPath: host?.dockerPath || DEFAULT_DOCKER_PATH,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // Reveal the advanced fields when editing a host that overrides a default.
+  const [showAdvanced, setShowAdvanced] = useState(
+    (!!host?.remoteSocket && host.remoteSocket !== DEFAULT_REMOTE_SOCKET) ||
+      (!!host?.dockerPath && host.dockerPath !== DEFAULT_DOCKER_PATH),
+  )
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const isRemote = form.dockerHost.trim() !== ''
@@ -30,6 +41,15 @@ function HostForm({ host, sshKeys, onClose, onSaved }) {
       dockerHost: form.dockerHost.trim(),
       sshKeyId: isRemote ? form.sshKeyId : '',
       enabled: form.enabled,
+    }
+    // transport / remoteSocket are only meaningful for remote ssh:// hosts.
+    if (isRemote) {
+      body.transport = form.transport
+      if (form.transport === 'dial-stdio') {
+        body.dockerPath = form.dockerPath.trim() || DEFAULT_DOCKER_PATH
+      } else {
+        body.remoteSocket = form.remoteSocket.trim() || DEFAULT_REMOTE_SOCKET
+      }
     }
     const url = isEdit ? `/api/settings/hosts/${host.id}` : '/api/settings/hosts'
     try {
@@ -71,6 +91,56 @@ function HostForm({ host, sshKeys, onClose, onSaved }) {
               {sshKeys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </label>
+        )}
+        {isRemote && (
+          <label class="form-label">
+            Transport
+            <select class="form-select" value={form.transport} onChange={e => set('transport', e.target.value)} name="transport">
+              <option value="forward">Socket forward (recommended)</option>
+              <option value="dial-stdio">Dial-stdio</option>
+            </select>
+            <span class="field-note">
+              {form.transport === 'dial-stdio'
+                ? 'Runs `docker system dial-stdio` on the remote; requires docker on the remote’s SSH PATH.'
+                : 'Forwards the remote Docker socket over SSH. Works even when `docker` isn’t on the remote PATH (e.g. Synology).'}
+            </span>
+          </label>
+        )}
+        {isRemote && (
+          <div class="form-advanced">
+            <button
+              type="button"
+              class="form-advanced__toggle"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced(v => !v)}
+            >
+              {showAdvanced ? '▾' : '▸'} Advanced
+            </button>
+            {showAdvanced && form.transport === 'dial-stdio' && (
+              <label class="form-label">
+                Remote docker path
+                <input
+                  class="form-input mono"
+                  value={form.dockerPath}
+                  onInput={e => set('dockerPath', e.target.value)}
+                  placeholder={DEFAULT_DOCKER_PATH}
+                />
+                <span class="field-note">Command used to run <code>docker system dial-stdio</code> on the remote. Set an absolute path (e.g. <code>/usr/local/bin/docker</code>) when docker isn’t on the remote’s SSH PATH — e.g. Synology.</span>
+              </label>
+            )}
+            {showAdvanced && form.transport !== 'dial-stdio' && (
+              <label class="form-label">
+                Remote Docker socket
+                <input
+                  class="form-input mono"
+                  value={form.remoteSocket}
+                  onInput={e => set('remoteSocket', e.target.value)}
+                  placeholder={DEFAULT_REMOTE_SOCKET}
+                />
+                <span class="field-note">Path to the Docker socket on the remote host. Leave as the default unless it lives elsewhere.</span>
+              </label>
+            )}
+          </div>
         )}
         <label class="form-label form-checkbox-row">
           <input type="checkbox" checked={form.enabled} onChange={e => set('enabled', e.target.checked)} />
@@ -178,6 +248,11 @@ export function HostsSettings({ sshKeys = [] }) {
                   <span class="host-item__addr mono">
                     {host.isLocal || !host.dockerHost ? 'local socket' : host.dockerHost}
                   </span>
+                  {!host.isLocal && host.dockerHost && (
+                    <span class="host-item__transport">
+                      {host.transport === 'dial-stdio' ? 'dial-stdio' : 'socket forward'}
+                    </span>
+                  )}
                   {test && (
                     <span class={`host-test host-test--${test.state}`} aria-live="polite">
                       {test.state === 'loading' && 'Testing connection…'}

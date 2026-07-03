@@ -101,6 +101,70 @@ func TestHostCRUD(t *testing.T) {
 	}
 }
 
+func TestHostTransportRoundTrip(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Seeded local host gets the column defaults.
+	local, err := GetHost(ctx, database, LocalHostID)
+	if err != nil {
+		t.Fatalf("get local host: %v", err)
+	}
+	if local.Transport != "forward" || local.RemoteSocket != "/var/run/docker.sock" {
+		t.Fatalf("local host defaults = (%q,%q)", local.Transport, local.RemoteSocket)
+	}
+
+	// Create without transport/socket → defaults applied.
+	def, err := CreateHost(ctx, database, HostDB{
+		Name: "def", DockerHost: "ssh://u@h", SSHKeyID: "k", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	if def.Transport != "forward" || def.RemoteSocket != "/var/run/docker.sock" {
+		t.Fatalf("create defaults not applied: %+v", def)
+	}
+	gotDef, _ := GetHost(ctx, database, def.ID)
+	if gotDef.Transport != "forward" || gotDef.RemoteSocket != "/var/run/docker.sock" {
+		t.Fatalf("persisted defaults = (%q,%q)", gotDef.Transport, gotDef.RemoteSocket)
+	}
+
+	// Create with explicit dial-stdio + custom socket → persisted verbatim.
+	ds, err := CreateHost(ctx, database, HostDB{
+		Name: "ds", DockerHost: "ssh://u@h2", SSHKeyID: "k", Enabled: true,
+		Transport: "dial-stdio", RemoteSocket: "/run/user/1000/docker.sock",
+	})
+	if err != nil {
+		t.Fatalf("create dial-stdio host: %v", err)
+	}
+	gotDS, _ := GetHost(ctx, database, ds.ID)
+	if gotDS.Transport != "dial-stdio" || gotDS.RemoteSocket != "/run/user/1000/docker.sock" {
+		t.Fatalf("dial-stdio not persisted: %+v", gotDS)
+	}
+
+	// Update transport + socket.
+	gotDS.Transport = "forward"
+	gotDS.RemoteSocket = "/var/run/docker.sock"
+	if err := UpdateHost(ctx, database, gotDS); err != nil {
+		t.Fatalf("update host: %v", err)
+	}
+	after, _ := GetHost(ctx, database, ds.ID)
+	if after.Transport != "forward" || after.RemoteSocket != "/var/run/docker.sock" {
+		t.Fatalf("update not applied: %+v", after)
+	}
+
+	// Update with empty transport/socket normalises back to defaults.
+	after.Transport = ""
+	after.RemoteSocket = ""
+	if err := UpdateHost(ctx, database, after); err != nil {
+		t.Fatalf("update host empties: %v", err)
+	}
+	norm, _ := GetHost(ctx, database, ds.ID)
+	if norm.Transport != "forward" || norm.RemoteSocket != "/var/run/docker.sock" {
+		t.Fatalf("empties not normalised: %+v", norm)
+	}
+}
+
 func TestDeleteLocalHostRejected(t *testing.T) {
 	database := openTestDB(t)
 	err := DeleteHost(context.Background(), database, LocalHostID)

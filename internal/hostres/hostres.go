@@ -23,11 +23,22 @@ import (
 // HostInfo is the resolved, decryption-free view of a host used for badging in
 // the UI and for building clients / compose env. It never carries key material.
 type HostInfo struct {
-	ID         string
-	Name       string
-	DockerHost string // "" = local socket
-	SSHKeyID   string
-	Enabled    bool
+	ID           string
+	Name         string
+	DockerHost   string // "" = local socket
+	SSHKeyID     string
+	Enabled      bool
+	Transport    string // "forward" (default) or "dial-stdio"; ignored for local
+	RemoteSocket string // remote Docker socket path (forward transport)
+	DockerPath   string // remote docker command for dial-stdio (default "docker")
+}
+
+// transport returns the effective transport, defaulting empty to "forward".
+func (h HostInfo) transport() string {
+	if h.Transport == "" {
+		return docker.TransportForward
+	}
+	return h.Transport
 }
 
 // IsLocal reports whether this host uses the local Docker socket.
@@ -80,11 +91,14 @@ func (r *Resolver) LoadHost(ctx context.Context, hostID string) (HostInfo, error
 		return HostInfo{}, fmt.Errorf("load host %q: %w", hostID, err)
 	}
 	return HostInfo{
-		ID:         h.ID,
-		Name:       h.Name,
-		DockerHost: h.DockerHost,
-		SSHKeyID:   h.SSHKeyID,
-		Enabled:    h.Enabled,
+		ID:           h.ID,
+		Name:         h.Name,
+		DockerHost:   h.DockerHost,
+		SSHKeyID:     h.SSHKeyID,
+		Enabled:      h.Enabled,
+		Transport:    h.Transport,
+		RemoteSocket: h.RemoteSocket,
+		DockerPath:   h.DockerPath,
 	}, nil
 }
 
@@ -130,6 +144,12 @@ func (r *Resolver) writeHostKey(ctx context.Context, info HostInfo) (string, err
 	return path, nil
 }
 
+// localSocketPath is the stable local unix socket a forward-transport host's ssh
+// tunnel binds to. It lives in the managed ssh dir alongside the host key.
+func (r *Resolver) localSocketPath(hostID string) string {
+	return filepath.Join(r.sshDir, "host-"+hostID+".sock")
+}
+
 // spec builds the docker.HostSpec for a host, materialising its key file when
 // remote.
 func (r *Resolver) spec(ctx context.Context, info HostInfo) (docker.HostSpec, error) {
@@ -145,6 +165,10 @@ func (r *Resolver) spec(ctx context.Context, info HostInfo) (docker.HostSpec, er
 		DockerHost:     info.DockerHost,
 		KeyPath:        keyPath,
 		KnownHostsFile: r.knownHosts,
+		Transport:      info.transport(),
+		RemoteSocket:   info.RemoteSocket,
+		LocalSocket:    r.localSocketPath(info.ID),
+		DockerPath:     info.DockerPath,
 	}, nil
 }
 
@@ -194,10 +218,17 @@ func (r *Resolver) ClientForStack(ctx context.Context, repoID, stackName, repoHo
 
 // ComposeEnv returns the extra environment a `docker compose` subprocess needs
 // to target the given host, plus a cleanup func. For a local host it returns
-// nil (compose talks to the local socket exactly as before). For a remote host
-// it materialises the key and a private HOME containing an .ssh/config so the
-// system ssh that `docker compose` invokes over DOCKER_HOST=ssh://… finds the
-// right IdentityFile and known_hosts.
+// nil (compose talks to the local socket exactly as before).
+//
+// For a remote host — regardless of transport (forward or dial-stdio) — compose
+// talks to a LOCAL unix socket exposed by the host's ssh transport (the forward
+// tunnel or the dial-stdio proxy), via DOCKER_HOST=unix://<localSocket>. It never
+// invokes ssh or a remote docker binary itself, so no HOME/.ssh/config is needed.
+// The tunnel/proxy MUST be up and ready first, because compose connects
+// immediately. Unifying on the local socket also means the configurable
+// DockerPath applies everywhere (the proxy's remote ssh command uses it), so
+// hosts where docker is absent from the non-interactive SSH PATH (e.g. Synology)
+// work for compose too, not just the API "test connection".
 //
 // NOTE: host-path bind mounts in a remote stack's compose file resolve on the
 // REMOTE daemon's filesystem, not on the stackd host — operators must ensure
@@ -210,53 +241,20 @@ func (r *Resolver) ComposeEnv(ctx context.Context, info HostInfo) (env []string,
 	if err := info.checkEnabled(); err != nil {
 		return nil, cleanup, err
 	}
-	keyPath, err := r.writeHostKey(ctx, info)
-	if err != nil {
-		return nil, cleanup, err
+	spec, serr := r.spec(ctx, info)
+	if serr != nil {
+		return nil, cleanup, serr
 	}
-	user, host, port, err := docker.ParseSSHHost(info.DockerHost)
-	if err != nil {
-		return nil, cleanup, err
+	switch info.transport() {
+	case docker.TransportDialStdio:
+		if serr := r.reg.EnsureDialProxyReady(ctx, spec); serr != nil {
+			return nil, cleanup, fmt.Errorf("ensure dial-stdio proxy for host %q: %w", info.Name, serr)
+		}
+	default: // forward
+		if serr := r.reg.EnsureForwardReady(ctx, spec); serr != nil {
+			return nil, cleanup, fmt.Errorf("ensure tunnel for host %q: %w", info.Name, serr)
+		}
 	}
-	homeDir := filepath.Join(r.sshDir, "host-"+info.ID+"-home")
-	sshCfgDir := filepath.Join(homeDir, ".ssh")
-	if err := os.MkdirAll(sshCfgDir, 0700); err != nil {
-		return nil, cleanup, fmt.Errorf("create compose ssh dir for host %q: %w", info.Name, err)
-	}
-	cfg := BuildSSHConfig(host, user, port, keyPath, r.knownHosts)
-	cfgPath := filepath.Join(sshCfgDir, "config")
-	if err := os.WriteFile(cfgPath, []byte(cfg), 0600); err != nil {
-		return nil, cleanup, fmt.Errorf("write compose ssh config for host %q: %w", info.Name, err)
-	}
-	env = []string{
-		"DOCKER_HOST=" + info.DockerHost,
-		"HOME=" + homeDir,
-	}
+	env = []string{"DOCKER_HOST=" + docker.ForwardComposeDockerHost(spec.LocalSocket)}
 	return env, cleanup, nil
-}
-
-// BuildSSHConfig renders the ~/.ssh/config block that lets the system ssh (as
-// spawned by `docker compose` over DOCKER_HOST=ssh://…) authenticate to a
-// remote host non-interactively. It is pure so it can be unit-tested. Empty
-// user/port are omitted (ssh uses its defaults, e.g. the URL-supplied values).
-func BuildSSHConfig(host, user, port, keyPath, knownHosts string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Host %s\n", host)
-	if user != "" {
-		fmt.Fprintf(&b, "    User %s\n", user)
-	}
-	if port != "" {
-		fmt.Fprintf(&b, "    Port %s\n", port)
-	}
-	if keyPath != "" {
-		fmt.Fprintf(&b, "    IdentityFile %s\n", keyPath)
-		fmt.Fprintf(&b, "    IdentitiesOnly yes\n")
-	}
-	if knownHosts != "" {
-		fmt.Fprintf(&b, "    UserKnownHostsFile %s\n", knownHosts)
-	}
-	fmt.Fprintf(&b, "    StrictHostKeyChecking accept-new\n")
-	fmt.Fprintf(&b, "    BatchMode yes\n")
-	fmt.Fprintf(&b, "    ConnectTimeout 10\n")
-	return b.String()
 }

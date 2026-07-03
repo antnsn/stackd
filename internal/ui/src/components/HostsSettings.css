@@ -82,3 +82,34 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/* Muted transport subtitle on a host row. */
+.host-item__transport {
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-muted);
+}
+
+/* Advanced (optional) form section. */
+.form-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form-advanced__toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.form-advanced__toggle:hover {
+  color: var(--text-primary);
+}

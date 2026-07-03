@@ -15,36 +15,45 @@ import (
 // ---- Hosts ----------------------------------------------------------------
 
 type hostResponse struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	DockerHost string    `json:"dockerHost"`
-	SSHKeyID   string    `json:"sshKeyId,omitempty"`
-	Enabled    bool      `json:"enabled"`
-	IsLocal    bool      `json:"isLocal"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	DockerHost   string    `json:"dockerHost"`
+	SSHKeyID     string    `json:"sshKeyId,omitempty"`
+	Enabled      bool      `json:"enabled"`
+	IsLocal      bool      `json:"isLocal"`
+	Transport    string    `json:"transport"`
+	RemoteSocket string    `json:"remoteSocket"`
+	DockerPath   string    `json:"dockerPath"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 func hostToResponse(h db.HostDB) hostResponse {
 	return hostResponse{
-		ID:         h.ID,
-		Name:       h.Name,
-		DockerHost: h.DockerHost,
-		SSHKeyID:   h.SSHKeyID,
-		Enabled:    h.Enabled,
-		IsLocal:    h.ID == db.LocalHostID || h.DockerHost == "",
-		CreatedAt:  h.CreatedAt,
-		UpdatedAt:  h.UpdatedAt,
+		ID:           h.ID,
+		Name:         h.Name,
+		DockerHost:   h.DockerHost,
+		SSHKeyID:     h.SSHKeyID,
+		Enabled:      h.Enabled,
+		IsLocal:      h.ID == db.LocalHostID || h.DockerHost == "",
+		Transport:    h.Transport,
+		RemoteSocket: h.RemoteSocket,
+		DockerPath:   h.DockerPath,
+		CreatedAt:    h.CreatedAt,
+		UpdatedAt:    h.UpdatedAt,
 	}
 }
 
 // hostRequest uses pointers so PUT can distinguish "field omitted" from "set to
 // zero value". For POST, Name and DockerHost are read directly.
 type hostRequest struct {
-	Name       *string `json:"name"`
-	DockerHost *string `json:"dockerHost"`
-	SSHKeyID   *string `json:"sshKeyId"`
-	Enabled    *bool   `json:"enabled"`
+	Name         *string `json:"name"`
+	DockerHost   *string `json:"dockerHost"`
+	SSHKeyID     *string `json:"sshKeyId"`
+	Enabled      *bool   `json:"enabled"`
+	Transport    *string `json:"transport"`
+	RemoteSocket *string `json:"remoteSocket"`
+	DockerPath   *string `json:"dockerPath"`
 }
 
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +113,33 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	transport := ""
+	if req.Transport != nil {
+		transport = *req.Transport
+	}
+	transport, err := docker.ValidateTransport(transport)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	remoteSocket := ""
+	if req.RemoteSocket != nil {
+		remoteSocket = *req.RemoteSocket
+	}
+	remoteSocket, err = docker.ValidateRemoteSocket(remoteSocket)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	dockerPath := ""
+	if req.DockerPath != nil {
+		dockerPath = *req.DockerPath
+	}
+	dockerPath, err = docker.ValidateDockerPath(dockerPath)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	sshKeyID := ""
 	if req.SSHKeyID != nil {
 		sshKeyID = *req.SSHKeyID
@@ -140,6 +176,7 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := db.CreateHost(r.Context(), s.db, db.HostDB{
 		Name: name, DockerHost: dockerHost, SSHKeyID: sshKeyID, Enabled: enabled,
+		Transport: transport, RemoteSocket: remoteSocket, DockerPath: dockerPath,
 	})
 	if err != nil {
 		jsonError(w, "failed to create host", http.StatusInternalServerError)
@@ -183,6 +220,30 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Enabled != nil {
 		existing.Enabled = *req.Enabled
+	}
+	if req.Transport != nil {
+		transport, terr := docker.ValidateTransport(*req.Transport)
+		if terr != nil {
+			jsonError(w, terr.Error(), http.StatusBadRequest)
+			return
+		}
+		existing.Transport = transport
+	}
+	if req.RemoteSocket != nil {
+		remoteSocket, serr := docker.ValidateRemoteSocket(*req.RemoteSocket)
+		if serr != nil {
+			jsonError(w, serr.Error(), http.StatusBadRequest)
+			return
+		}
+		existing.RemoteSocket = remoteSocket
+	}
+	if req.DockerPath != nil {
+		dockerPath, derr := docker.ValidateDockerPath(*req.DockerPath)
+		if derr != nil {
+			jsonError(w, derr.Error(), http.StatusBadRequest)
+			return
+		}
+		existing.DockerPath = dockerPath
 	}
 	// A remote host still needs a usable key after the update.
 	if existing.DockerHost != "" {

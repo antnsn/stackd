@@ -1,47 +1,54 @@
 package hostres
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"stackd/internal/docker"
 )
 
-func TestBuildSSHConfig(t *testing.T) {
-	cfg := BuildSSHConfig("example.com", "deploy", "2222", "/keys/host-abc.key", "/ssh/known_hosts")
-
-	wantLines := []string{
-		"Host example.com",
-		"    User deploy",
-		"    Port 2222",
-		"    IdentityFile /keys/host-abc.key",
-		"    IdentitiesOnly yes",
-		"    UserKnownHostsFile /ssh/known_hosts",
-		"    StrictHostKeyChecking accept-new",
-		"    BatchMode yes",
-		"    ConnectTimeout 10",
+func TestHostInfoTransportDefault(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", docker.TransportForward},
+		{"forward", docker.TransportForward},
+		{"dial-stdio", docker.TransportDialStdio},
 	}
-	for _, want := range wantLines {
-		if !strings.Contains(cfg, want) {
-			t.Errorf("config missing line %q\ngot:\n%s", want, cfg)
+	for _, tt := range tests {
+		if got := (HostInfo{Transport: tt.in}).transport(); got != tt.want {
+			t.Fatalf("transport(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }
 
-func TestBuildSSHConfigOmitsEmptyOptionals(t *testing.T) {
-	cfg := BuildSSHConfig("host", "", "", "", "")
-	if strings.Contains(cfg, "User ") {
-		t.Errorf("expected no User line, got:\n%s", cfg)
+func TestLocalSocketPath(t *testing.T) {
+	r := New(nil, nil, nil, "/clone/.ssh", "/clone/.ssh/known_hosts")
+	got := r.localSocketPath("abc-123")
+	want := filepath.Join("/clone/.ssh", "host-abc-123.sock")
+	if got != want {
+		t.Fatalf("localSocketPath = %q, want %q", got, want)
 	}
-	if strings.Contains(cfg, "Port ") {
-		t.Errorf("expected no Port line, got:\n%s", cfg)
+}
+
+// TestForwardComposeDockerHost documents the DOCKER_HOST that a remote host's
+// ComposeEnv hands to `docker compose`: a unix:// URL for the local socket
+// exposed by the host's ssh transport, with no HOME/.ssh/config involved. This
+// holds for BOTH transports — the forward tunnel and the dial-stdio proxy both
+// bind the same per-host local socket — so compose never invokes ssh or a remote
+// docker binary itself. This asserts the pure mapping so the selection is covered
+// without launching a live tunnel/proxy.
+func TestForwardComposeDockerHost(t *testing.T) {
+	r := New(nil, nil, nil, "/clone/.ssh", "/clone/.ssh/known_hosts")
+	sock := r.localSocketPath("h1")
+	got := docker.ForwardComposeDockerHost(sock)
+	want := "unix://" + filepath.Join("/clone/.ssh", "host-h1.sock")
+	if got != want {
+		t.Fatalf("remote DOCKER_HOST = %q, want %q", got, want)
 	}
-	if strings.Contains(cfg, "IdentityFile") {
-		t.Errorf("expected no IdentityFile line, got:\n%s", cfg)
-	}
-	if strings.Contains(cfg, "UserKnownHostsFile") {
-		t.Errorf("expected no UserKnownHostsFile line, got:\n%s", cfg)
-	}
-	// The fixed hardening lines must always be present.
-	if !strings.Contains(cfg, "StrictHostKeyChecking accept-new") {
-		t.Errorf("expected StrictHostKeyChecking line, got:\n%s", cfg)
+	if strings.HasPrefix(got, "ssh://") {
+		t.Fatalf("remote DOCKER_HOST must not be ssh://, got %q", got)
 	}
 }
