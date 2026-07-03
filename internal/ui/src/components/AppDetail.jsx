@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative, formatDateTime } from '../utils/time'
 import { apiFetch, withToken } from '../utils/auth.js'
+import { fetchHosts, isLocalHostId } from '../utils/hosts.js'
+import { HostBadge } from './HostBadge.jsx'
 import '@xterm/xterm/css/xterm.css'
 import './AppDetail.css'
 
@@ -31,6 +33,9 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
               class={`status-pip status-pip--${stack.status}`}
               aria-label={`Status: ${stack.status}`}
             />
+          )}
+          {!isLocalHostId(stack.hostId) && stack.hostName && (
+            <HostBadge hostName={stack.hostName} />
           )}
         </div>
         <div class="detail-header__actions">
@@ -86,6 +91,7 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
             <span class="meta-value meta-value--mono">{stack.stackDir}</span>
           </div>
         )}
+        <StackHostControl repoName={stack.repoName} stackName={stack.name} />
       </div>
 
       {containers.length > 0 ? (
@@ -132,6 +138,83 @@ export function AppDetail({ stack, onClose, onRefresh, onForceSync, onApplyStack
           Close
         </button>
       </div>
+    </div>
+  )
+}
+
+// ── StackHostControl ──────────────────────────────────
+// Shows the effective Docker host for a stack and lets the user override it
+// (or inherit from the repo). Hidden entirely when the backend has no
+// multi-host support, or when only the built-in local host exists — so a
+// single-host install never sees host UI.
+
+function StackHostControl({ repoName, stackName }) {
+  const [info, setInfo] = useState(null)       // { effectiveHostId, effectiveHostName, overrideHostId }
+  const [hosts, setHosts] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [unavailable, setUnavailable] = useState(false)
+
+  const hostUrl = `/api/stacks/${encodeURIComponent(repoName)}/${encodeURIComponent(stackName)}/host`
+
+  useEffect(() => {
+    let cancelled = false
+    setInfo(null); setError(null); setUnavailable(false)
+    Promise.all([
+      apiFetch(hostUrl).then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))),
+      fetchHosts(),
+    ])
+      .then(([hostInfo, hostList]) => {
+        if (cancelled) return
+        setInfo(hostInfo)
+        setHosts(hostList)
+      })
+      .catch(() => { if (!cancelled) setUnavailable(true) })
+    return () => { cancelled = true }
+  }, [repoName, stackName])
+
+  const change = async (val) => {
+    setSaving(true); setError(null)
+    try {
+      const res = await apiFetch(hostUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId: val }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Update failed'); setSaving(false); return }
+      // Re-read the resolved effective host after the change.
+      const fresh = await apiFetch(hostUrl).then(r => r.ok ? r.json() : null)
+      if (fresh) setInfo(fresh)
+      setSaving(false)
+    } catch (e) { setError(e.message); setSaving(false) }
+  }
+
+  // Hide in single-host mode (only the built-in local host) or when the
+  // endpoint is unavailable on an older backend.
+  if (unavailable || !info || hosts.length <= 1) return null
+
+  return (
+    <div class="meta-item">
+      <span class="meta-label">Host</span>
+      <div class="stack-host-control">
+        <select
+          class="stack-host-select"
+          value={info.overrideHostId || ''}
+          onChange={e => change(e.target.value)}
+          disabled={saving}
+          aria-label="Stack host override"
+        >
+          <option value="">Inherit from repo</option>
+          {hosts.map(h => (
+            <option key={h.id} value={h.id}>{h.name}{h.isLocal ? ' (local)' : ''}</option>
+          ))}
+        </select>
+        <span class="stack-host-effective">
+          {saving ? 'Saving…' : `→ ${info.effectiveHostName || info.effectiveHostId || 'local'}`}
+        </span>
+      </div>
+      {error && <span class="stack-host-error">{error}</span>}
     </div>
   )
 }

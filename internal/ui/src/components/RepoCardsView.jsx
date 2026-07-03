@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faKey } from '@fortawesome/free-solid-svg-icons'
 import { formatRelative } from '../utils/time.js'
 import { withToken, subscribe, getToken, needsLogin } from '../utils/auth.js'
+import { isLocalHostId } from '../utils/hosts.js'
+import { HostBadge } from './HostBadge.jsx'
 import './RepoCardsView.css'
 
 const KNOWN_REGISTRIES = [
@@ -195,6 +197,9 @@ function StackCard({ stack, onSelect, index }) {
     >
       <div class="stack-card-main__header">
         <span class="stack-card-main__name">{stack.name}</span>
+        {!isLocalHostId(stack.hostId) && stack.hostName && (
+          <HostBadge hostName={stack.hostName} />
+        )}
         {stack.infisicalMode && (
           <span
             class={`stack-card-main__infisical stack-card-main__infisical--${stack.infisicalMode}`}

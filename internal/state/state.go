@@ -101,6 +101,8 @@ type StackState struct {
 	LastError     string            `json:"lastError,omitempty"`
 	Containers    []ContainerDetail `json:"containers"`
 	InfisicalMode string            `json:"infisicalMode,omitempty"` // "": none, "global": global token, "per-stack": infisical.toml
+	HostID        string            `json:"hostId,omitempty"`        // resolved host id the stack runs on
+	HostName      string            `json:"hostName,omitempty"`      // resolved host name (for UI badge)
 }
 
 type InfisicalState struct {
