@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -28,6 +29,7 @@ type repoRequest struct {
 	StacksDir    string `json:"stacksDir"`
 	SyncInterval int    `json:"syncInterval"`
 	Enabled      *bool  `json:"enabled"`
+	HostID       string `json:"hostId"`
 }
 
 type repoResponse struct {
@@ -42,6 +44,7 @@ type repoResponse struct {
 	StacksDir    string    `json:"stacksDir"`
 	SyncInterval int       `json:"syncInterval"`
 	Enabled      bool      `json:"enabled"`
+	HostID       string    `json:"hostId"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }
@@ -59,9 +62,22 @@ func repoToResponse(r db.RepoDB) repoResponse {
 		StacksDir:    r.StacksDir,
 		SyncInterval: r.SyncInterval,
 		Enabled:      r.Enabled,
+		HostID:       r.HostID,
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
 	}
+}
+
+// validateHostRef returns nil if hostID refers to an existing host. An empty
+// hostID is treated as the built-in local host.
+func (s *Server) validateHostRef(r *http.Request, hostID string) error {
+	if hostID == "" || hostID == db.LocalHostID {
+		return nil
+	}
+	if _, err := db.GetHost(r.Context(), s.db, hostID); err != nil {
+		return fmt.Errorf("host %q does not exist", hostID)
+	}
+	return nil
 }
 
 func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +140,13 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	if req.HostID == "" {
+		req.HostID = db.LocalHostID
+	}
+	if err := s.validateHostRef(r, req.HostID); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	var patEnc string
 	if req.PAT != "" {
 		var err error
@@ -137,6 +160,7 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, URL: req.URL, Branch: req.Branch, Remote: req.Remote,
 		AuthType: req.AuthType, SSHKeyID: req.SSHKeyID, PATEnc: patEnc,
 		StacksDir: req.StacksDir, SyncInterval: req.SyncInterval, Enabled: enabled,
+		HostID: req.HostID,
 	}
 	if err := db.CreateRepo(r.Context(), s.db, repo); err != nil {
 		slog.Error("create repo", "err", err)
@@ -224,6 +248,13 @@ func (s *Server) handleUpdateRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StacksDir != "" {
 		existing.StacksDir = req.StacksDir
+	}
+	if req.HostID != "" {
+		if err := s.validateHostRef(r, req.HostID); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		existing.HostID = req.HostID
 	}
 	if req.SyncInterval > 0 {
 		existing.SyncInterval = req.SyncInterval

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'preact/hooks'
 import { apiFetch, clearToken } from '../utils/auth.js'
+import { fetchHosts, LOCAL_HOST_ID } from '../utils/hosts.js'
+import { HostsSettings } from './HostsSettings.jsx'
 import './Settings.css'
 
 // ---- Repos tab -----------------------------------------------------------
 
-function RepoForm({ repo, sshKeys, onClose, onSaved }) {
+function RepoForm({ repo, sshKeys, hosts, onClose, onSaved }) {
   const isEdit = !!repo
   const [form, setForm] = useState({
     name: repo?.name || '',
@@ -14,6 +16,7 @@ function RepoForm({ repo, sshKeys, onClose, onSaved }) {
     authType: repo?.authType || 'none',
     sshKeyId: repo?.sshKeyId || '',
     pat: '',
+    hostId: repo?.hostId || LOCAL_HOST_ID,
     stacksDir: repo?.stacksDir || '.',
     syncInterval: repo?.syncInterval || 60,
     enabled: repo?.enabled !== false,
@@ -65,6 +68,17 @@ function RepoForm({ repo, sshKeys, onClose, onSaved }) {
           <input class="form-input" value={form.remote} onInput={e => set('remote', e.target.value)} />
         </label>
         <label class="form-label">
+          Host
+          <select class="form-select" value={form.hostId} onChange={e => set('hostId', e.target.value)} name="hostId">
+            {hosts.length === 0 && <option value={LOCAL_HOST_ID}>local</option>}
+            {hosts.map(h => (
+              <option key={h.id} value={h.id}>
+                {h.name}{h.isLocal ? ' (local socket)' : h.dockerHost ? ` — ${h.dockerHost}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="form-label">
           Authentication
           <select class="form-select" value={form.authType} onChange={e => set('authType', e.target.value)} name="authType">
             <option value="none">None (public repo)</option>
@@ -113,6 +127,7 @@ function RepoForm({ repo, sshKeys, onClose, onSaved }) {
 
 function ReposTab({ sshKeys }) {
   const [repos, setRepos] = useState([])
+  const [hosts, setHosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false) // false | 'add' | repo object
@@ -127,6 +142,14 @@ function ReposTab({ sshKeys }) {
   }
 
   useEffect(loadRepos, [])
+  // Hosts populate the repo form selector and the host column. Degrades to []
+  // (local-only) on an older backend without multi-host support.
+  useEffect(() => { fetchHosts().then(setHosts) }, [])
+
+  const hostName = (id) => {
+    const h = hosts.find(x => x.id === (id || LOCAL_HOST_ID))
+    return h ? h.name : (id || 'local')
+  }
 
   const deleteRepo = async (id) => {
     await apiFetch(`/api/settings/repos/${id}`, { method: 'DELETE' })
@@ -147,6 +170,7 @@ function ReposTab({ sshKeys }) {
         <RepoForm
           repo={showForm === 'add' ? null : showForm}
           sshKeys={sshKeys}
+          hosts={hosts}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); loadRepos() }}
         />
@@ -168,6 +192,7 @@ function ReposTab({ sshKeys }) {
                 <th>Name</th>
                 <th>URL</th>
                 <th>Branch</th>
+                <th>Host</th>
                 <th>Auth</th>
                 <th>Stacks dir</th>
                 <th>Interval</th>
@@ -181,6 +206,7 @@ function ReposTab({ sshKeys }) {
                   <td class="td-name">{repo.name}</td>
                   <td class="td-url">{repo.url}</td>
                   <td>{repo.branch}</td>
+                  <td>{hostName(repo.hostId)}</td>
                   <td>{repo.authType || 'none'}</td>
                   <td class="td-mono">{repo.stacksDir || '.'}</td>
                   <td>{repo.syncInterval}s</td>
@@ -642,6 +668,12 @@ export function Settings() {
           SSH Keys
         </button>
         <button
+          class={`settings-nav__item ${tab === 'hosts' ? 'active' : ''}`}
+          onClick={() => setTab('hosts')}
+        >
+          Hosts
+        </button>
+        <button
           class={`settings-nav__item ${tab === 'repos' ? 'active' : ''}`}
           onClick={() => setTab('repos')}
         >
@@ -657,6 +689,7 @@ export function Settings() {
       <div class="settings-content">
         {tab === 'general' && <GeneralTab />}
         {tab === 'ssh' && <SSHKeysTab onKeysChange={setSSHKeys} />}
+        {tab === 'hosts' && <HostsSettings sshKeys={sshKeys} />}
         {tab === 'repos' && <ReposTab sshKeys={sshKeys} />}
         {tab === 'infisical' && <InfisicalTab />}
       </div>

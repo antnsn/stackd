@@ -24,6 +24,7 @@ import (
 	"stackd/internal/docker"
 	"stackd/internal/execpg"
 	"stackd/internal/git"
+	"stackd/internal/hostres"
 	"stackd/internal/metrics"
 	"stackd/internal/server"
 	"stackd/internal/state"
@@ -350,14 +351,22 @@ func infisicalMode(stackPath string, cfg InfisicalConfig) string {
 	return ""
 }
 
-func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg InfisicalConfig) *exec.Cmd {
+// buildComposeCmd builds the apply command. extraEnv carries any host-routing
+// environment (DOCKER_HOST + HOME with an ssh config, for remote hosts); it is
+// empty for local hosts, in which case compose targets the local socket exactly
+// as before.
+func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg InfisicalConfig, extraEnv []string) *exec.Cmd {
 	tomlPath := filepath.Join(stackPath, "infisical.toml")
 	_, tomlErr := os.Stat(tomlPath)
 	hasToml := tomlErr == nil
 
+	baseEnv := append(os.Environ(), extraEnv...)
+
 	if !hasToml && cfg.Token == "" {
 		slog.Info("applying stack", "stack", stackName, "infisical", false)
-		return execpg.CommandContext(ctx, "docker", "compose", "up", "-d")
+		cmd := execpg.CommandContext(ctx, "docker", "compose", "up", "-d")
+		cmd.Env = baseEnv
+		return cmd
 	}
 
 	if hasToml {
@@ -367,7 +376,9 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 		}
 		args = append(args, "--", "docker", "compose", "up", "-d")
 		slog.Info("stack using per-stack infisical.toml", "stack", stackName)
-		return execpg.CommandContext(ctx, "infisical", args...)
+		cmd := execpg.CommandContext(ctx, "infisical", args...)
+		cmd.Env = baseEnv
+		return cmd
 	}
 
 	// Pass the token via INFISICAL_TOKEN in the environment rather than
@@ -383,40 +394,31 @@ func buildComposeCmd(ctx context.Context, stackPath, stackName string, cfg Infis
 	args = append(args, "--", "docker", "compose", "up", "-d")
 	slog.Info("stack using global infisical token", "stack", stackName, "env", cfg.Env)
 	cmd := execpg.CommandContext(ctx, "infisical", args...)
-	cmd.Env = append(os.Environ(), "INFISICAL_TOKEN="+cfg.Token)
+	cmd.Env = append(baseEnv, "INFISICAL_TOKEN="+cfg.Token)
 	return cmd
 }
 
 // refreshContainers updates container details for all stacks whose StackDir is
-// known. Safe to call with a nil holder (no-op). Attempts reconnection when the
-// holder currently has no client, publishing the reconnected client through the
-// holder so the HTTP server sees it too.
-func refreshContainers(ctx context.Context, store *state.Store, holder *docker.ClientHolder) {
-	if holder == nil {
+// known, talking to each stack's resolved host. Safe to call with a nil
+// resolver (no-op). A local daemon that was down is picked up automatically
+// because the registry does not cache failed builds.
+func refreshContainers(ctx context.Context, store *state.Store, resolver *hostres.Resolver) {
+	if resolver == nil {
 		return
-	}
-	client := holder.Get()
-	if client == nil {
-		c, err := docker.New()
-		if err != nil {
-			slog.Warn("docker reconnection failed", "err", err)
-			return
-		}
-		// Publish atomically: if a concurrent caller already reconnected, we lose
-		// the race and must Close our client so it is not leaked.
-		if holder.CompareAndSwap(nil, c) {
-			slog.Info("docker client reconnected")
-			client = c
-		} else {
-			_ = c.Close()
-			client = holder.Get()
-			if client == nil {
-				return
-			}
-		}
 	}
 	for _, st := range store.GetAllStacks() {
 		if st.StackDir == "" {
+			continue
+		}
+		hostID := st.HostID
+		if hostID == "" {
+			hostID = db.LocalHostID
+		}
+		clientCtx, clientCancel := context.WithTimeout(ctx, 10*time.Second)
+		client, _, cerr := resolver.ClientForHostID(clientCtx, hostID)
+		clientCancel()
+		if cerr != nil || client == nil {
+			slog.Warn("refreshContainers: no client for host", "repo", st.RepoName, "stack", st.Name, "host", hostID, "err", cerr)
 			continue
 		}
 		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -462,7 +464,7 @@ func latestStartedAt(containers []state.ContainerDetail) time.Time {
 	return latest
 }
 
-func applyStack(ctx context.Context, stackPath, stackName, repoName string, store *state.Store, holder *docker.ClientHolder, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
+func applyStack(ctx context.Context, stackPath, stackName, repoName string, hostInfo hostres.HostInfo, resolver *hostres.Resolver, store *state.Store, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
 	if bus != nil {
 		bus.Publish(state.ActivityEvent{Type: "applying", Repo: repoName, Stack: stackName, Msg: "Applying " + stackName})
 	}
@@ -473,12 +475,38 @@ func applyStack(ctx context.Context, stackPath, stackName, repoName string, stor
 			StackDir:   stackPath,
 			Status:     state.ApplyApplying,
 			Containers: []state.ContainerDetail{},
+			HostID:     hostInfo.ID,
+			HostName:   hostInfo.Name,
 		})
 	}
 
 	applyCtx, applyCancel := context.WithTimeout(ctx, 300*time.Second)
 	defer applyCancel()
-	cmd := buildComposeCmd(applyCtx, stackPath, stackName, infisicalCfg)
+
+	// Resolve the host-routing environment for `docker compose` (empty for local).
+	composeEnv, composeCleanup, envErr := resolver.ComposeEnv(applyCtx, hostInfo)
+	if composeCleanup != nil {
+		defer composeCleanup()
+	}
+	if envErr != nil {
+		slog.Error("stack apply: build host env failed", "stack", stackName, "host", hostInfo.Name, "err", envErr)
+		if store != nil {
+			store.UpdateStack(state.StackState{
+				Name: stackName, RepoName: repoName, StackDir: stackPath,
+				LastApply: time.Now(), Status: state.ApplyError,
+				LastError:  "host " + hostInfo.Name + ": " + envErr.Error(),
+				Containers: []state.ContainerDetail{},
+				HostID:     hostInfo.ID, HostName: hostInfo.Name,
+			})
+			metrics.RecordApply(stackName, "error")
+		}
+		if bus != nil {
+			bus.Publish(state.ActivityEvent{Type: "error", Repo: repoName, Stack: stackName, Msg: stackName + " failed"})
+		}
+		return
+	}
+
+	cmd := buildComposeCmd(applyCtx, stackPath, stackName, infisicalCfg, composeEnv)
 	cmd.Dir = stackPath
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
@@ -495,13 +523,20 @@ func applyStack(ctx context.Context, stackPath, stackName, repoName string, stor
 			LastOutput:    outputStr,
 			Containers:    []state.ContainerDetail{},
 			InfisicalMode: infisicalMode(stackPath, infisicalCfg),
+			HostID:        hostInfo.ID,
+			HostName:      hostInfo.Name,
 		}
 		if err != nil {
 			st.Status = state.ApplyError
 			st.LastError = extractErrorSummary(outputStr, err.Error())
 		} else {
 			st.Status = state.ApplyOK
-			if dockerClient := holder.Get(); dockerClient != nil {
+			ctrClientCtx, ctrClientCancel := context.WithTimeout(ctx, 15*time.Second)
+			dockerClient, clientErr := resolver.Client(ctrClientCtx, hostInfo)
+			ctrClientCancel()
+			if clientErr != nil {
+				slog.Warn("container lookup: no client for host", "stack", stackName, "host", hostInfo.Name, "err", clientErr)
+			} else if dockerClient != nil {
 				ctrCtx, ctrCancel := context.WithTimeout(ctx, 30*time.Second)
 				ctrs, dErr := dockerClient.ListStackContainerDetails(ctrCtx, stackPath)
 				ctrCancel()
@@ -549,11 +584,13 @@ func applyStack(ctx context.Context, stackPath, stackName, repoName string, stor
 	}
 }
 
-// runStacksSync discovers and applies all docker-compose stacks in stacksDir.
-func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state.Store, holder *docker.ClientHolder, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
+// runStacksSync discovers and applies all docker-compose stacks in stacksDir,
+// resolving each stack's target host (override → repo → local) before applying.
+func runStacksSync(ctx context.Context, stacksDir string, repo db.RepoDB, resolver *hostres.Resolver, store *state.Store, infisicalCfg InfisicalConfig, bus *state.ActivityBus) {
 	if stacksDir == "" {
 		return
 	}
+	repoName := repo.Name
 	entries, err := os.ReadDir(stacksDir)
 	if err != nil {
 		slog.Error("failed to read stacks dir", "repo", repoName, "dir", stacksDir, "err", err)
@@ -577,14 +614,32 @@ func runStacksSync(ctx context.Context, stacksDir, repoName string, store *state
 			slog.Warn("no compose file found, skipping stack", "stack", stackName, "repo", repoName)
 			continue
 		}
-		applyStack(ctx, stackPath, stackName, repoName, store, holder, infisicalCfg, bus)
+		hostInfo := resolveStackHostInfo(ctx, resolver, repo, stackName)
+		applyStack(ctx, stackPath, stackName, repoName, hostInfo, resolver, store, infisicalCfg, bus)
 	}
+}
+
+// resolveStackHostInfo resolves a stack's effective host, falling back to the
+// local host if resolution fails so a DB hiccup never blocks an apply.
+func resolveStackHostInfo(ctx context.Context, resolver *hostres.Resolver, repo db.RepoDB, stackName string) hostres.HostInfo {
+	resolveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	info, err := resolver.ResolveStackHost(resolveCtx, repo.ID, stackName, repo.HostID)
+	if err != nil {
+		slog.Warn("host resolution failed, using local", "repo", repo.Name, "stack", stackName, "err", err)
+		local, lerr := resolver.LoadHost(resolveCtx, db.LocalHostID)
+		if lerr != nil {
+			return hostres.HostInfo{ID: db.LocalHostID, Name: db.LocalHostID}
+		}
+		return local
+	}
+	return info
 }
 
 // syncRepoFromDB brings the repo's clone up to date and applies stacks if the
 // SHA changed. It acquires the per-repo lock so concurrent syncs (scheduled,
 // manual, per-stack apply) are serialised.
-func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, holder *docker.ClientHolder, infisicalCfg InfisicalConfig, bus *state.ActivityBus, defaultInterval time.Duration) {
+func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, cryptoKey []byte, sqlDB *sql.DB, store *state.Store, resolver *hostres.Resolver, infisicalCfg InfisicalConfig, bus *state.ActivityBus, defaultInterval time.Duration) {
 	repoName := repo.Name
 	start := time.Now()
 
@@ -655,7 +710,7 @@ func syncRepoFromDB(ctx context.Context, repo db.RepoDB, cloneDir string, crypto
 	// always differs from a real SHA, so it is covered by newSHA != oldSHA.
 	if newSHA != oldSHA {
 		stacksDir := filepath.Join(destDir, repo.StacksDir)
-		runStacksSync(ctx, stacksDir, repoName, store, holder, infisicalCfg, bus)
+		runStacksSync(ctx, stacksDir, repo, resolver, store, infisicalCfg, bus)
 	}
 	if bus != nil {
 		bus.Publish(state.ActivityEvent{Type: "done", Repo: repoName, Msg: repoName + " up to date"})
@@ -807,16 +862,25 @@ func main() {
 		store.SetInfisical(state.InfisicalState{Enabled: infCfg.Token != "", Env: infCfg.Env})
 	}
 
-	// --- Docker client ---
-	// Held in a ClientHolder so reconnects performed by refreshContainers become
-	// visible to the HTTP server without a data race.
-	var initialClient *docker.Client
-	if c, err := docker.New(); err == nil {
-		initialClient = c
-	} else {
-		slog.Warn("docker client unavailable, container details and log streaming disabled", "err", err)
+	// --- Docker client registry + host resolver ---
+	// The registry lazily builds and caches one client per host (local + each
+	// remote). A failed local build is not cached, so a daemon that comes back up
+	// is picked up automatically on the next call (preserving the old reconnect
+	// behaviour). The resolver ties (repo, stack) → host → client together and
+	// owns the on-disk per-host SSH key/config material.
+	dockerRegistry := docker.NewRegistry()
+	defer dockerRegistry.CloseAll()
+	knownHosts := filepath.Join(sshDir, "known_hosts")
+	resolver := hostres.New(sqlDB, dockerRegistry, cryptoKey, sshDir, knownHosts)
+	// Warm the local client so an unavailable daemon is reported at startup. The
+	// registry owns the client's lifetime (closed by CloseAll).
+	{
+		warmCtx, warmCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if _, _, err := resolver.ClientForHostID(warmCtx, db.LocalHostID); err != nil {
+			slog.Warn("docker client unavailable, container details and log streaming disabled", "err", err)
+		}
+		warmCancel()
 	}
-	dockerHolder := docker.NewHolder(initialClient)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -837,14 +901,14 @@ func main() {
 			if !repo.Enabled {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, startupInfCfg, activityBus, startupDefaultInterval)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, resolver, startupInfCfg, activityBus, startupDefaultInterval)
 		}
-		refreshContainers(ctx, store, dockerHolder)
+		refreshContainers(ctx, store, resolver)
 	}
 
 	// --- Dashboard server (always enabled) ---
 	syncTrigger := make(chan string, 16)
-	srv := server.New(store, dockerHolder, syncTrigger, bindAddr, port, sqlDB, cryptoKey, activityBus)
+	srv := server.New(store, dockerRegistry, resolver, syncTrigger, bindAddr, port, sqlDB, cryptoKey, activityBus)
 
 	// Set the dashboard token, fail-closed: env var wins, then a persisted
 	// token, otherwise generate a random one and persist it so auth is ALWAYS
@@ -892,8 +956,9 @@ func main() {
 			activityBus.Publish(state.ActivityEvent{Type: "done", Repo: repoName, Msg: repoName + " up to date"})
 		}
 
-		applyStack(ctx, st.StackDir, stackName, repoName, store, dockerHolder, infCfg, activityBus)
-		refreshContainers(ctx, store, dockerHolder)
+		hostInfo := resolveStackHostInfo(ctx, resolver, repoDB, stackName)
+		applyStack(ctx, st.StackDir, stackName, repoName, hostInfo, resolver, store, infCfg, activityBus)
+		refreshContainers(ctx, store, resolver)
 	})
 
 	go srv.Start(ctx)
@@ -919,9 +984,9 @@ func main() {
 			if !dueForSync(repo.Name) {
 				continue
 			}
-			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, infisicalCfg, activityBus, defaultInterval)
+			syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, resolver, infisicalCfg, activityBus, defaultInterval)
 		}
-		refreshContainers(ctx, store, dockerHolder)
+		refreshContainers(ctx, store, resolver)
 	}
 
 	for {
@@ -974,9 +1039,9 @@ func main() {
 				}
 				slog.Info("manual sync triggered", "repo", repo.Name)
 				resetBackoff(repo.Name)
-				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, dockerHolder, trigInfCfg, activityBus, defaultInterval)
+				syncRepoFromDB(ctx, repo, cloneDir, cryptoKey, sqlDB, store, resolver, trigInfCfg, activityBus, defaultInterval)
 			}
-			refreshContainers(ctx, store, dockerHolder)
+			refreshContainers(ctx, store, resolver)
 			ticker.Reset(baseTick)
 		}
 	}
