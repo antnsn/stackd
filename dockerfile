@@ -43,8 +43,10 @@ FROM alpine:latest
 
 RUN apk add --no-cache git openssh tzdata docker-cli docker-cli-compose curl bash
 
-# Install Infisical CLI
-RUN curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.alpine.sh' | bash \
+# Install Infisical CLI from Infisical's own apk repository.
+# (The former dl.cloudsmith.io repo was retired in Sep 2026 and now returns 404.)
+RUN wget -qO /etc/apk/keys/infisical.rsa.pub https://artifacts-cli.infisical.com/apk/infisical.rsa.pub \
+    && echo 'https://artifacts-cli.infisical.com/apk/stable/main' >> /etc/apk/repositories \
     && apk add --no-cache infisical
 
 ENV TZ=""
