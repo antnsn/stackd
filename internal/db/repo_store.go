@@ -20,6 +20,7 @@ type RepoDB struct {
 	StacksDir    string
 	SyncInterval int
 	Enabled      bool
+	HostID       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -46,7 +47,7 @@ func scanRepo(rows interface {
 	err := rows.Scan(
 		&r.ID, &r.Name, &r.URL, &r.Branch, &r.Remote,
 		&r.AuthType, &sshKeyID, &patEnc, &r.StacksDir,
-		&r.SyncInterval, &enabled, &createdAt, &updatedAt,
+		&r.SyncInterval, &enabled, &r.HostID, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return RepoDB{}, err
@@ -54,6 +55,9 @@ func scanRepo(rows interface {
 	r.SSHKeyID = sshKeyID.String
 	r.PATEnc = patEnc.String
 	r.Enabled = enabled != 0
+	if r.HostID == "" {
+		r.HostID = LocalHostID
+	}
 	r.CreatedAt, _ = time.Parse(time.DateTime, createdAt)
 	r.UpdatedAt, _ = time.Parse(time.DateTime, updatedAt)
 	return r, nil
@@ -62,7 +66,7 @@ func scanRepo(rows interface {
 func ListRepos(ctx context.Context, db *sql.DB) ([]RepoDB, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
-                stacks_dir, sync_interval, enabled, created_at, updated_at
+                stacks_dir, sync_interval, enabled, host_id, created_at, updated_at
          FROM repos ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("listRepos: %w", err)
@@ -82,7 +86,7 @@ func ListRepos(ctx context.Context, db *sql.DB) ([]RepoDB, error) {
 func GetRepo(ctx context.Context, db *sql.DB, id string) (RepoDB, error) {
 	row := db.QueryRowContext(ctx,
 		Rebind(`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
-                stacks_dir, sync_interval, enabled, created_at, updated_at
+                stacks_dir, sync_interval, enabled, host_id, created_at, updated_at
          FROM repos WHERE id = ?`), id)
 	r, err := scanRepo(row)
 	if err != nil {
@@ -94,7 +98,7 @@ func GetRepo(ctx context.Context, db *sql.DB, id string) (RepoDB, error) {
 func GetRepoByName(ctx context.Context, db *sql.DB, name string) (RepoDB, error) {
 	row := db.QueryRowContext(ctx,
 		Rebind(`SELECT id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
-                stacks_dir, sync_interval, enabled, created_at, updated_at
+                stacks_dir, sync_interval, enabled, host_id, created_at, updated_at
          FROM repos WHERE name = ?`), name)
 	r, err := scanRepo(row)
 	if err != nil {
@@ -107,14 +111,17 @@ func CreateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 	if r.ID == "" {
 		r.ID = newUUID()
 	}
+	if r.HostID == "" {
+		r.HostID = LocalHostID
+	}
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
 		Rebind(`INSERT INTO repos (id, name, url, branch, remote, auth_type, ssh_key_id, pat_enc,
-                            stacks_dir, sync_interval, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+                            stacks_dir, sync_interval, enabled, host_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		r.ID, r.Name, r.URL, r.Branch, r.Remote,
 		r.AuthType, nullStr(r.SSHKeyID), nullStr(r.PATEnc),
-		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), now, now,
+		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), r.HostID, now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("createRepo: %w", err)
@@ -123,15 +130,18 @@ func CreateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
 }
 
 func UpdateRepo(ctx context.Context, db *sql.DB, r RepoDB) error {
+	if r.HostID == "" {
+		r.HostID = LocalHostID
+	}
 	now := time.Now().UTC().Format(time.DateTime)
 	_, err := db.ExecContext(ctx,
 		Rebind(`UPDATE repos SET name=?, url=?, branch=?, remote=?, auth_type=?,
                           ssh_key_id=?, pat_enc=?, stacks_dir=?, sync_interval=?,
-                          enabled=?, updated_at=?
+                          enabled=?, host_id=?, updated_at=?
          WHERE id=?`),
 		r.Name, r.URL, r.Branch, r.Remote, r.AuthType,
 		nullStr(r.SSHKeyID), nullStr(r.PATEnc),
-		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), now, r.ID,
+		r.StacksDir, r.SyncInterval, boolInt(r.Enabled), r.HostID, now, r.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("updateRepo: %w", err)

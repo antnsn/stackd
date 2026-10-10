@@ -1,0 +1,115 @@
+/* ── Host list (settings) ──────────────────────────────── */
+.host-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.host-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.host-item__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.host-item__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.host-item__name {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.host-item__addr {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.host-item__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.host-tag {
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.host-tag--local {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* Test-connection result. Green/red are status states — allowed here. */
+.host-test {
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+.host-test--loading { color: var(--text-secondary); }
+.host-test--ok      { color: var(--status-running); }
+.host-test--err     { color: var(--status-stopped); word-break: break-word; }
+
+/* Inline note under a form field. */
+.field-note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Muted transport subtitle on a host row. */
+.host-item__transport {
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-muted);
+}
+
+/* Advanced (optional) form section. */
+.form-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form-advanced__toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.form-advanced__toggle:hover {
+  color: var(--text-primary);
+}

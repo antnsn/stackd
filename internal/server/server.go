@@ -25,7 +25,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"stackd/internal/compose"
+	"stackd/internal/db"
 	"stackd/internal/docker"
+	"stackd/internal/hostres"
 	"stackd/internal/metrics"
 	"stackd/internal/state"
 	"stackd/internal/ui"
@@ -34,7 +36,8 @@ import (
 // Server is the dashboard HTTP server.
 type Server struct {
 	store       *state.Store
-	docker      *docker.ClientHolder // holds the current client; may return nil
+	registry    *docker.Registry  // per-host docker client cache
+	resolver    *hostres.Resolver // (repo, stack) → host → client resolution
 	syncTrigger chan<- string
 	addr        string
 	mux         *http.ServeMux
@@ -55,13 +58,14 @@ type Server struct {
 }
 
 // New creates a Server. syncTrigger receives repo names for on-demand syncs.
-// dockerHolder holds the current Docker client (which may be nil); reconnects
-// made through it become visible to handlers immediately. bindAddr is the
-// listen host (e.g. "127.0.0.1"); log endpoints return 503 when no client.
-func New(store *state.Store, dockerHolder *docker.ClientHolder, syncTrigger chan<- string, bindAddr string, port int, sqlDB *sql.DB, cryptoKey []byte, activity *state.ActivityBus) *Server {
+// registry caches one Docker client per host and resolver maps a stack/container
+// to the right host's client. bindAddr is the listen host (e.g. "127.0.0.1");
+// log/exec endpoints return 503 when the resolved host's client is unavailable.
+func New(store *state.Store, registry *docker.Registry, resolver *hostres.Resolver, syncTrigger chan<- string, bindAddr string, port int, sqlDB *sql.DB, cryptoKey []byte, activity *state.ActivityBus) *Server {
 	s := &Server{
 		store:       store,
-		docker:      dockerHolder,
+		registry:    registry,
+		resolver:    resolver,
 		syncTrigger: syncTrigger,
 		addr:        net.JoinHostPort(bindAddr, strconv.Itoa(port)),
 		mux:         http.NewServeMux(),
@@ -185,7 +189,7 @@ func (s *Server) registerRoutes() {
 
 	// GET /readyz — readiness probe
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		dockerOK := s.dockerClient() != nil
+		dockerOK := s.localClient(r.Context()) != nil
 		// A fresh install with no repos configured is "ready" once Docker is up —
 		// there is simply nothing to sync yet. Otherwise require at least one
 		// applied stack.
@@ -224,6 +228,16 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/settings/ssh-keys", s.handleListSSHKeys)
 	s.mux.HandleFunc("POST /api/settings/ssh-keys", s.handleCreateSSHKey)
 	s.mux.HandleFunc("DELETE /api/settings/ssh-keys/{id}", s.handleDeleteSSHKey)
+	// Hosts
+	s.mux.HandleFunc("GET /api/settings/hosts", s.handleListHosts)
+	s.mux.HandleFunc("POST /api/settings/hosts", s.handleCreateHost)
+	s.mux.HandleFunc("GET /api/settings/hosts/{id}", s.handleGetHost)
+	s.mux.HandleFunc("PUT /api/settings/hosts/{id}", s.handleUpdateHost)
+	s.mux.HandleFunc("DELETE /api/settings/hosts/{id}", s.handleDeleteHost)
+	s.mux.HandleFunc("POST /api/settings/hosts/{id}/test", s.handleTestHost)
+	// Per-stack host override
+	s.mux.HandleFunc("GET /api/stacks/{repo}/{stack}/host", s.handleGetStackHost)
+	s.mux.HandleFunc("PUT /api/stacks/{repo}/{stack}/host", s.handlePutStackHost)
 	// General settings
 	s.mux.HandleFunc("GET /api/settings/general", s.handleGetGeneralSettings)
 	s.mux.HandleFunc("PUT /api/settings/general", s.handleUpdateGeneralSettings)
@@ -374,8 +388,8 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dockerCli := s.dockerClient()
-	if dockerCli == nil {
+	dockerCli, cerr := s.clientForContainer(r.Context(), containerName)
+	if cerr != nil || dockerCli == nil {
 		http.Error(w, "Docker client unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -405,13 +419,13 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 // handleContainerAction dispatches start/stop/restart for a single container.
 func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, action string) {
 	w.Header().Set("Content-Type", "application/json")
-	dockerCli := s.dockerClient()
-	if dockerCli == nil {
+	name := r.PathValue("container")
+	dockerCli, cerr := s.clientForContainer(r.Context(), name)
+	if cerr != nil || dockerCli == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]string{"error": "docker unavailable"})
 		return
 	}
-	name := r.PathValue("container")
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
@@ -443,13 +457,17 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, a
 // refreshContainerState re-fetches container details for every stack containing
 // the named container and updates the store.
 func (s *Server) refreshContainerState(containerName string) {
-	dockerCli := s.dockerClient()
-	if dockerCli == nil {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	for _, st := range s.store.GetAllStacks() {
+		hostID := st.HostID
+		if hostID == "" {
+			hostID = db.LocalHostID
+		}
+		dockerCli, _, cerr := s.resolver.ClientForHostID(ctx, hostID)
+		if cerr != nil || dockerCli == nil {
+			continue
+		}
 		dockerDetails, err := dockerCli.ListStackContainerDetails(ctx, st.StackDir)
 		if err != nil {
 			continue
@@ -586,10 +604,36 @@ func (s *sseWriter) Write(p []byte) (int, error) {
 
 // ── Activity SSE ──────────────────────────────────────────────────────────────
 
-// dockerClient returns the current Docker client (or nil if unavailable),
-// reflecting any reconnect performed by the sync loop.
-func (s *Server) dockerClient() *docker.Client {
-	return s.docker.Get()
+// localClient returns the local-host Docker client, or nil if unavailable. Used
+// for readiness checks and as a fallback when a container's host is unknown.
+func (s *Server) localClient(ctx context.Context) *docker.Client {
+	cli, _, err := s.resolver.ClientForHostID(ctx, db.LocalHostID)
+	if err != nil {
+		return nil
+	}
+	return cli
+}
+
+// clientForContainer resolves the Docker client for the host a container runs
+// on by locating the stack that owns it in the state store. Container names can
+// collide across hosts, so this uses the stack→host mapping recorded at apply
+// time. Falls back to the local host when the container is not found in any
+// known stack (e.g. an ad-hoc container).
+func (s *Server) clientForContainer(ctx context.Context, containerName string) (*docker.Client, error) {
+	hostID := db.LocalHostID
+	for _, st := range s.store.GetAllStacks() {
+		for _, c := range st.Containers {
+			if c.Name == containerName {
+				if st.HostID != "" {
+					hostID = st.HostID
+				}
+				cli, _, err := s.resolver.ClientForHostID(ctx, hostID)
+				return cli, err
+			}
+		}
+	}
+	cli, _, err := s.resolver.ClientForHostID(ctx, hostID)
+	return cli, err
 }
 
 func (s *Server) getToken() string {
@@ -744,15 +788,15 @@ type execResizeMsg struct {
 // handleExec upgrades to WebSocket and bridges a docker exec PTY session.
 // GET /api/exec/{container}
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
-	dockerCli := s.dockerClient()
-	if dockerCli == nil {
-		http.Error(w, "docker unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
 	containerID := r.PathValue("container")
 	if containerID == "" {
 		http.Error(w, "missing container", http.StatusBadRequest)
+		return
+	}
+
+	dockerCli, cerr := s.clientForContainer(r.Context(), containerID)
+	if cerr != nil || dockerCli == nil {
+		http.Error(w, "docker unavailable", http.StatusServiceUnavailable)
 		return
 	}
 

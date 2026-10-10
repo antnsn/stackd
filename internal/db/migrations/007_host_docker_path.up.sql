@@ -1,0 +1,1 @@
+ALTER TABLE hosts ADD COLUMN docker_path TEXT NOT NULL DEFAULT 'docker';

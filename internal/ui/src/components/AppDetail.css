@@ -205,6 +205,54 @@
   color: var(--status-stopped);
 }
 
+/* ── Stack host override control ─────────────────── */
+.stack-host-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.stack-host-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.stack-host-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.stack-host-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.stack-host-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.stack-host-effective {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.stack-host-error {
+  font-size: var(--text-xs);
+  color: var(--status-stopped);
+  margin-top: 2px;
+}
+
 /* ── Container tabs (one tab per container) ──────── */
 .container-tabs {
   display: flex;

@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS stack_overrides;
+ALTER TABLE repos DROP COLUMN host_id;
+DROP TABLE IF EXISTS hosts;
